@@ -21,9 +21,10 @@ turned up two defects that no unit test could have caught, both recorded in
 1. `defaultTasksAudioLoader` used a variable import specifier, so **no browser
    could resolve MediaPipe** and `createEngine` could never load a model. Fixed.
 2. MediaPipe's WASM loader calls `importScripts`, which throws inside the ES
-   **module** worker earshot creates. The same code loads fine on the main
-   thread and in a classic worker. **Open** — the fix changes what consumers
-   configure, so it is a maintainer decision.
+   **module** worker earshot created. Fixed: the engine worker is now a classic
+   worker, and consumers set `worker: { format: 'iife' }`. Verified end to end
+   with the shipped defaults — `createEngine` loads the real models and produces
+   1024-dimension embeddings.
 
 ## Blocked
 
@@ -43,16 +44,19 @@ container.
 | Metric | Value | Notes |
 | --- | --- | --- |
 | Model load, main thread | 1094 ms | classifier + embedder |
-| Model load, classic worker | 1199 ms | end to end through `createEngine` |
+| Model load, classic worker | 1137-1408 ms | end to end through `createEngine` |
 | Model load, module worker | **fails** | see decision `0007` |
 | Embedding dimensions | 1024 | matches `EMBEDDING_DIMENSIONS` |
 | classify + embed, one window | 17.4 ms | models only |
-| Full engine, one window | 43.6 ms | embed + classify + features |
+| Full engine, one window | 35.5-43.6 ms | embed + classify + features, over 3 runs |
 
-The full-engine figure is **above the 30 ms target**, on a desktop container
-that is considerably faster than the 2022 mid-range Android phone the target
-names. The gap between 17.4 ms and 43.6 ms is the feature extractor, not the
-models, which is where any optimisation should start.
+The full-engine figure is **above the 30 ms target** in every run, on a desktop
+container considerably faster than the 2022 mid-range Android phone the target
+names. The gap between 17.4 ms and the full figure is the feature extractor, not
+the models, which is where any optimisation should start.
+
+Also measured: `vite dev` cannot run the model path at all, whatever
+`worker.format` says — see decision `0007` for the four combinations tested.
 
 ## Pipeline sanity against real audio (measured)
 
@@ -116,7 +120,7 @@ mid-range Android phone.
 
 | Device | Per window | Target | Result |
 | --- | --- | --- | --- |
-| Desktop container, headless Chromium | 43.6 ms | < 30 ms | **over budget** |
+| Desktop container, headless Chromium | 35.5-43.6 ms | < 30 ms | **over budget** |
 | 2022 mid-range Android | — | < 30 ms | not measured |
 
 ## Reproducing

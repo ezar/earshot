@@ -24,13 +24,22 @@ and come with a migration note.
   inference cost and pipeline sanity against real YAMNet, and says plainly which
   suites are blocked and why.
 
+### Changed
+
+- **The engine worker is now a classic worker.** MediaPipe's WASM loader calls
+  `importScripts`, which an ES module worker does not support, so `createEngine`
+  could not load a model in any consuming app. Consumers must set
+  `worker: { format: 'iife' }` in their Vite config instead of `'es'`. Verified
+  end to end with the real models. See `docs/decisions/0007-*.md`.
+
 ### Notes
 
-**`createEngine` cannot load models in a module Worker.** MediaPipe's WASM
-loader calls `importScripts`, which throws inside an ES module worker; the same
-code loads fine on the main thread and in a classic worker. The fix changes what
-consumers configure (`worker: { format: 'iife' }`), so it is recorded as a
-proposed decision in `docs/decisions/0007-*.md` rather than applied.
+**The model path does not run under `vite dev`.** Vite serves workers as ES
+modules in development whatever `worker.format` says, so the engine hits the
+`importScripts` failure there; the build path works. `pnpm playground` now
+builds and previews, and `pnpm playground:dsp` keeps the dev server for the
+DSP-only work. Everything that does not touch MediaPipe is unaffected in every
+mode.
 
 **Per-window cost is over budget.** 43.6 ms for embed + classify + features on a
 desktop container, against a 30 ms target on a 2022 mid-range Android. The

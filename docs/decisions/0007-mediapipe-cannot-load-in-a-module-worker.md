@@ -1,7 +1,6 @@
 # 0007 — MediaPipe cannot load in a module Worker
 
-**Status:** proposed — the fix changes what consumers must configure, so it is
-the maintainer's call.
+**Status:** accepted
 
 ## Context
 
@@ -66,33 +65,53 @@ the **main thread** (1094 ms, 1024-dimension embeddings), and fine inside a
 made for this, but 1.x is exactly the line that dropped `AudioEmbedder` (see
 `0006`), so it is not available to anyone who needs embeddings.
 
-## Decision to make
+## Decision
 
-Verified working: **build the engine worker as a classic worker.**
-`createEngine` would construct it without `{ type: 'module' }`, and consumers
-would set `worker: { format: 'iife' }` in their Vite config instead of `'es'`.
+**The engine worker is a classic worker.** `createEngine` constructs it without
+`{ type: 'module' }`, and consumers set `worker: { format: 'iife' }` in their
+Vite config instead of `'es'`.
+
 Measured end to end with the real models in that configuration:
 
 | | |
 | --- | --- |
-| Models loaded in a classic worker | 1199 ms |
+| Models loaded in a classic worker | 1199-1408 ms |
 | Embedding dimensions | 1024, matching `EMBEDDING_DIMENSIONS` |
 | One window, embed + classify + features | 43.6 ms (desktop container) |
 
-The cost is that `worker.format` is global in a Vite config, so an app with
-other module workers cannot have both.
-
-Alternatives, neither recommended:
+Alternatives, both rejected:
 
 - **Run the models on the main thread.** Contradicts the spec's "the engine runs
   in a Worker" and gives up the reason the Worker exists.
 - **Require MediaPipe 1.x with `useModule: true`.** Keeps module workers, but
   costs the embedder, and with it the `'embedding'` feature space and the kNN
-  identity classifier.
+  identity classifier (see `0006`).
 
 ## Consequences
 
-Until this is decided, `createEngine` cannot load models in any consuming app.
-The DSP, guards, learning, scoring, events and classification layers are
-unaffected — they never touch MediaPipe — but nothing that needs a class score
-or an embedding can run.
+**`worker.format` is global in a Vite config**, so an app cannot have earshot's
+classic worker and its own module workers at the same time. Apps with other
+workers must build those as IIFE too.
+
+**The model path does not run under `vite dev`.** Vite serves workers as ES
+modules in development whatever `worker.format` says, so the engine hits the
+`importScripts` failure there. Verified across both worker formats and both the
+`?worker&url` and `?worker` import forms — all four combinations fail in dev and
+the build succeeds:
+
+| Mode | Worker Vite produces | Models load |
+| --- | --- | --- |
+| `vite dev`, any setting | module | no |
+| `vite build`, `format: 'iife'` | classic | **yes** |
+| `vite build`, `format: 'es'` | module | no |
+
+So anything that needs a class score or an embedding must be exercised against a
+build: `vite build --watch` alongside `vite preview`, which is what
+`pnpm playground` now does. `pnpm playground:dsp` keeps the dev server for the
+capture, level and feature work that never touches a model.
+
+This is a Vite limitation rather than an earshot defect, but it is the kind of
+thing that costs an afternoon if it is not written down.
+
+Everything that does not touch MediaPipe — the DSP, guards, learning, scoring,
+events and classification — is unaffected in every mode.

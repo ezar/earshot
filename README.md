@@ -74,12 +74,19 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   optimizeDeps: { exclude: ['earshot'] },
-  worker: { format: 'es' },
+  worker: { format: 'iife' },
 });
 ```
 
-`optimizeDeps.exclude` is required: earshot ships TypeScript, and the dependency
+Both settings are required.
+
+`optimizeDeps.exclude` because earshot ships TypeScript, and the dependency
 pre-bundler cannot process it.
+
+`worker.format: 'iife'` because the engine worker is a **classic** worker, not a
+module worker: MediaPipe loads its WASM glue with `importScripts`, which module
+workers do not support. Note that `worker.format` is global, so an app that has
+its own module workers cannot have both.
 
 The AudioWorklet processor (`earshot/capture-worklet`) is plain JavaScript, not
 TypeScript, because `audioWorklet.addModule` hands its URL straight to the
@@ -143,6 +150,13 @@ capture.onChunk((samples) => void engine.push(samples));
 await capture.stop();
 await engine.close();
 ```
+
+> **The model path does not run under `vite dev`.** Vite serves workers as ES
+> modules in development whatever `worker.format` says, and MediaPipe cannot
+> load in a module worker. Exercise anything that needs a class score or an
+> embedding against a build — `vite build --watch` alongside `vite preview`.
+> Capture, levels, features, pitch and segmentation never touch a model and work
+> in dev as normal. See `docs/decisions/0007-*.md`.
 
 `createCapture` asks the browser for echo cancellation, noise suppression and
 automatic gain control to be **off** — all three rewrite the signal in ways that
@@ -312,7 +326,8 @@ instance. Persist them with Dexie and hand them back later.
 pnpm install
 pnpm test          # vitest, unit tests on synthetic fixtures
 pnpm typecheck     # tsc --noEmit under the consumers' strictness
-pnpm playground    # a real browser, live capture and features
+pnpm playground    # a real browser: builds, then previews (models need a build)
+pnpm playground:dsp # dev server, for the DSP-only path
 pnpm smoke         # headless Chromium: loads the worklet and checks it runs
 ```
 
