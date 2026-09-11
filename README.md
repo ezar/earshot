@@ -45,13 +45,26 @@ Because your project type-checks earshot's sources, they compile cleanly under
 > MediaPipe removed `AudioEmbedder` from 0.10.32 onward, including 1.x — it is
 > gone from both the types and the runtime bundle, though the package README
 > still documents it. The classifier is unaffected and works on every release.
->
-> Embeddings drive the `'embedding'` feature space and the kNN identity
-> classifier. Without them, `createEngine` runs classifier-only and
-> `learnProfile` falls back to the `'features'` space automatically;
-> `createEmbedder` throws with this constraint spelled out rather than failing
-> on an undefined reference. `EMBEDDER_MAX_VERSION` is exported so you can
-> assert on it. See `docs/decisions/0006-*.md`.
+
+Which version you need depends on what you use earshot for:
+
+| You use | MediaPipe version | Why |
+| --- | --- | --- |
+| The DSP only (features, pitch, segmentation) | not needed | no model is loaded |
+| Classification, and profiles in the `'features'` space | any, including 1.x | only `AudioClassifier` is touched |
+| Profiles in the `'embedding'` space, or the kNN identity classifier | **`<=0.10.21`** | needs `AudioEmbedder` |
+
+Without an embedder, `createEngine` runs classifier-only and `learnProfile`
+falls back to the `'features'` space on its own, so a profile still works.
+`createEmbedder` throws with this constraint spelled out rather than failing on
+an undefined reference, and `EMBEDDER_MAX_VERSION` is exported so you can assert
+on it instead of hardcoding the number:
+
+```ts
+import { EMBEDDER_MAX_VERSION } from 'earshot'; // '0.10.21'
+```
+
+Full analysis in `docs/decisions/0006-mediapipe-dropped-the-audio-embedder.md`.
 
 ### Vite configuration
 
@@ -205,6 +218,30 @@ separately watches for *drift*: a slow rise in the baseline that no single
 window would ever flag.
 
 ## Detecting and identifying vocalizations (Meowlogue)
+
+> **This section needs `"@mediapipe/tasks-audio": "<=0.10.21"`.**
+>
+> ```jsonc
+> // package.json
+> {
+>   "dependencies": {
+>     "earshot": "github:ezar/earshot#v0.3.0",
+>     "@mediapipe/tasks-audio": "<=0.10.21"
+>   }
+> }
+> ```
+>
+> Identity rests on cosine distance between YAMNet embeddings, and MediaPipe
+> dropped `AudioEmbedder` after 0.10.21 (see [Peer dependencies](#peer-dependencies)).
+> There is no fallback for this one: kNN over the interpretable features is not a
+> substitute for kNN over a learned embedding. Without the pin, `createEngine`
+> rejects at startup, because loading the embedder is part of initialising the
+> worker. Dropping `embedderUrl` gets you past that, but then every
+> `window.embedding` is empty and `createKnnClassifier` has nothing to separate
+> one cat from another.
+>
+> Detection, segmentation, syllable counting and pitch need none of this — they
+> run off the classifier and the DSP, so they work on any MediaPipe version.
 
 ```ts
 import {
