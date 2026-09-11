@@ -11,7 +11,7 @@
 
 import { SAMPLE_RATE_HZ } from '../constants.js';
 import { resample } from '../dsp/resample.js';
-import { CAPTURE_PROCESSOR_NAME, type CaptureChunkMessage } from './capture-worklet.js';
+import { CAPTURE_PROCESSOR_NAME, type CaptureChunkMessage, type CaptureMessage } from './worklet-protocol.js';
 
 /** What the browser actually granted, compared with what earshot asked for. */
 export interface AppliedConstraints {
@@ -112,7 +112,7 @@ export async function createCapture(options: CaptureOptions): Promise<Capture> {
   const listeners = new Set<(samples: Float32Array) => void>();
 
   node.port.onmessage = (event: MessageEvent) => {
-    const message = event.data as CaptureChunkMessage | { type: string };
+    const message = event.data as CaptureMessage;
     if (message.type !== 'chunk') return;
     const chunk = (message as CaptureChunkMessage).samples;
     const samples =

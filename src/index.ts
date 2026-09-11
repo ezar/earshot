@@ -48,8 +48,13 @@ export type {
 // Capture.
 export { createCapture } from './capture/index.js';
 export type { AppliedConstraints, Capture, CaptureOptions } from './capture/index.js';
-export { CAPTURE_PROCESSOR_NAME } from './capture/capture-worklet.js';
-export type { CaptureChunkMessage, CaptureProcessorOptions } from './capture/capture-worklet.js';
+export { CAPTURE_PROCESSOR_NAME } from './capture/worklet-protocol.js';
+export type {
+  CaptureChunkMessage,
+  CaptureMessage,
+  CaptureProcessorOptions,
+  CaptureReadyMessage,
+} from './capture/worklet-protocol.js';
 
 // Engine.
 export { createEngine } from './engine.js';

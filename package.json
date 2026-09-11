@@ -18,7 +18,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./worker": "./src/worker/engine-worker.ts",
-    "./capture-worklet": "./src/capture/capture-worklet.ts",
+    "./capture-worklet": "./src/capture/capture-worklet.js",
     "./clap": "./src/models/clap.ts",
     "./mlp": "./src/classify/mlp.ts",
     "./package.json": "./package.json"
@@ -30,7 +30,8 @@
     "lint": "tsc --noEmit",
     "playground": "vite --config playground/vite.config.ts",
     "eval:fetch": "node scripts/eval/fetch-datasets.mjs",
-    "eval:run": "node scripts/eval/run-eval.mjs"
+    "eval:run": "node scripts/eval/run-eval.mjs",
+    "smoke": "node scripts/smoke/capture-worklet.mjs"
   },
   "peerDependencies": {
     "@huggingface/transformers": ">=3",
@@ -38,16 +39,30 @@
     "@tensorflow/tfjs": ">=4"
   },
   "peerDependenciesMeta": {
-    "@huggingface/transformers": { "optional": true },
-    "@mediapipe/tasks-audio": { "optional": true },
-    "@tensorflow/tfjs": { "optional": true }
+    "@huggingface/transformers": {
+      "optional": true
+    },
+    "@mediapipe/tasks-audio": {
+      "optional": true
+    },
+    "@tensorflow/tfjs": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "playwright": "^1.63.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vitest": "^2.1.8"
   },
   "packageManager": "pnpm@10.33.0",
-  "keywords": ["audio", "yamnet", "mediapipe", "anomaly-detection", "browser", "dsp"]
+  "keywords": [
+    "audio",
+    "yamnet",
+    "mediapipe",
+    "anomaly-detection",
+    "browser",
+    "dsp"
+  ]
 }
