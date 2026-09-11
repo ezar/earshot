@@ -46,8 +46,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The compiler is installed outside the workspace on purpose: `pnpm add`
+      # would rewrite package.json and the lockfile mid-job, and the point of
+      # this matrix is to check the sources as they are, not as the matrix
+      # left them.
       - name: Typecheck with TypeScript ${{ matrix.typescript }}
         run: |
-          pnpm add -D --no-frozen-lockfile "typescript@^${{ matrix.typescript }}"
-          pnpm exec tsc --version
-          pnpm exec tsc --noEmit
+          dir="$(mktemp -d)"
+          npm install --silent --no-audit --no-fund --prefix "$dir" "typescript@^${{ matrix.typescript }}"
+          "$dir/node_modules/.bin/tsc" --version
+          "$dir/node_modules/.bin/tsc" --noEmit -p tsconfig.json
