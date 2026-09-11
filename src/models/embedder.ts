@@ -1,7 +1,12 @@
 /** Thin wrapper over MediaPipe's YAMNet `AudioEmbedder`. */
 
 import { SAMPLE_RATE_HZ } from '../constants.js';
-import { defaultTasksAudioLoader, type ModelUrls, type TasksAudioEmbedder } from './tasks-audio.js';
+import {
+  defaultTasksAudioLoader,
+  EMBEDDER_MAX_VERSION,
+  type ModelUrls,
+  type TasksAudioEmbedder,
+} from './tasks-audio.js';
 
 /** Options for {@link createEmbedder}. */
 export interface EmbedderOptions extends ModelUrls {
@@ -25,13 +30,26 @@ export interface Embedder {
 /**
  * Load the YAMNet embedder from app-provided URLs.
  *
- * @throws When `embedderUrl` is missing or the task file cannot be loaded.
+ * @throws When `embedderUrl` is missing, when the loaded MediaPipe build has no
+ *   `AudioEmbedder` (see {@link EMBEDDER_MAX_VERSION}), or when the task file
+ *   cannot be loaded.
  */
 export async function createEmbedder(options: EmbedderOptions): Promise<Embedder> {
   if (options.embedderUrl === undefined) {
     throw new Error('earshot: createEmbedder requires models.embedderUrl');
   }
   const tasks = await (options.loadTasksAudio ?? defaultTasksAudioLoader)();
+  if (tasks.AudioEmbedder === undefined) {
+    // Failing here with the version constraint is far kinder than the
+    // "cannot read properties of undefined" an app would otherwise get, deep
+    // inside a Worker, the first time a user tried to learn a profile.
+    throw new Error(
+      'earshot: this build of @mediapipe/tasks-audio has no AudioEmbedder. ' +
+        `MediaPipe removed it after ${EMBEDDER_MAX_VERSION}; pin ` +
+        `"@mediapipe/tasks-audio": "<=${EMBEDDER_MAX_VERSION}" to use embeddings, ` +
+        "or run without an embedderUrl and learn profiles in the 'features' space.",
+    );
+  }
   const fileset = await tasks.FilesetResolver.forAudioTasks(options.wasmBaseUrl);
   const embedder: TasksAudioEmbedder = await tasks.AudioEmbedder.createFromOptions(fileset, {
     baseOptions: { modelAssetPath: options.embedderUrl },

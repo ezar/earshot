@@ -4,6 +4,7 @@ import { SAMPLE_RATE_HZ, WINDOW_SAMPLES } from '../src/constants.js';
 import { createEngine } from '../src/engine.js';
 import { createClassifier, maxScoreOf, mergeClassifications, scoreOf } from '../src/models/classifier.js';
 import { averageEmbeddings, createEmbedder } from '../src/models/embedder.js';
+import { EMBEDDER_MAX_VERSION } from '../src/models/tasks-audio.js';
 import type { TasksAudioModule } from '../src/models/tasks-audio.js';
 import type { EngineRequest, EngineResponse } from '../src/worker/protocol.js';
 import { createFeatureExtractor } from '../src/dsp/features.js';
@@ -173,6 +174,24 @@ describe('model wrappers', () => {
   it('requires the app to supply model URLs', async () => {
     await expect(createClassifier({ wasmBaseUrl: 'w' })).rejects.toThrow(/classifierUrl/);
     await expect(createEmbedder({ wasmBaseUrl: 'w' })).rejects.toThrow(/embedderUrl/);
+  });
+
+  it('explains itself when the MediaPipe build has no AudioEmbedder', async () => {
+    // MediaPipe removed AudioEmbedder after 0.10.21. Without this guard an app
+    // gets "cannot read properties of undefined" from inside a Worker.
+    const withoutEmbedder = { ...fakeTasks([0.1], []) } as { AudioEmbedder?: unknown };
+    delete withoutEmbedder.AudioEmbedder;
+    await expect(
+      createEmbedder({
+        wasmBaseUrl: 'w',
+        embedderUrl: 'e',
+        loadTasksAudio: async () => withoutEmbedder as unknown as TasksAudioModule,
+      }),
+    ).rejects.toThrow(/has no AudioEmbedder.*0\.10\.21/s);
+  });
+
+  it('names the last version that ships the embedder', () => {
+    expect(EMBEDDER_MAX_VERSION).toBe('0.10.21');
   });
 
   it('keeps the strongest score per class across patches', () => {

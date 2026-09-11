@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  check:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,9 +22,37 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-
-      # Consumers type-check earshot's sources, so this is the check that
-      # matters most: it runs under the same strictness their projects use.
       - run: pnpm typecheck
-
       - run: pnpm test
+
+  # Consumers type-check earshot's sources with their own TypeScript, which is
+  # not necessarily the one pinned here. This job is what keeps that promise
+  # honest: the sources must compile on every TypeScript major still in use.
+  typescript-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        typescript: ['5', '6', '7']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The compiler is installed outside the workspace on purpose: `pnpm add`
+      # would rewrite package.json and the lockfile mid-job, and the point of
+      # this matrix is to check the sources as they are, not as the matrix
+      # left them.
+      - name: Typecheck with TypeScript ${{ matrix.typescript }}
+        run: |
+          dir="$(mktemp -d)"
+          npm install --silent --no-audit --no-fund --prefix "$dir" "typescript@^${{ matrix.typescript }}"
+          "$dir/node_modules/.bin/tsc" --version
+          "$dir/node_modules/.bin/tsc" --noEmit -p tsconfig.json

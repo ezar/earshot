@@ -10,7 +10,7 @@ tests, where ground truth is exact and no dataset licence is involved.
 
 ## Status
 
-**Not yet run.** The library's algorithms are covered by 169 unit tests on
+**Not yet run.** The library's algorithms are covered by 173 unit tests on
 synthetic fixtures, and the harness below is written and ready, but no dataset
 has been downloaded or evaluated. The tables are the shape the results will
 take; the targets are inherited from the app specs.
