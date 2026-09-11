@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>earshot playground</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { margin: 0; padding: 24px; max-width: 720px; }
+      h1 { font-size: 1.2rem; margin: 0 0 4px; }
+      p.lede { margin: 0 0 20px; opacity: 0.7; font-size: 0.9rem; }
+      fieldset { border: 1px solid currentColor; border-radius: 8px; margin: 0 0 16px; padding: 12px; opacity: 0.9; }
+      legend { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+      label { display: block; font-size: 0.85rem; margin: 6px 0 2px; }
+      input { width: 100%; padding: 6px; font: inherit; box-sizing: border-box; }
+      button { font: inherit; padding: 8px 16px; margin-right: 8px; }
+      .meter { height: 14px; background: currentColor; opacity: 0.25; border-radius: 3px; }
+      .meter > div { height: 100%; background: currentColor; border-radius: 3px; width: 0; }
+      table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+      td { padding: 2px 6px 2px 0; }
+      td.n { text-align: right; font-variant-numeric: tabular-nums; }
+      pre { font-size: 0.75rem; overflow-x: auto; opacity: 0.8; }
+      .status { font-size: 0.85rem; min-height: 1.4em; }
+    </style>
+  </head>
+  <body>
+    <h1>earshot playground</h1>
+    <p class="lede">
+      Capture, live classes, levels and embeddings in a real browser. Self-host the YAMNet task
+      files and the MediaPipe WASM assets, then point the fields below at them.
+    </p>
+
+    <fieldset>
+      <legend>Model locations</legend>
+      <label for="wasm">MediaPipe WASM base URL</label>
+      <input id="wasm" value="/models/wasm" />
+      <label for="classifier">Classifier task file</label>
+      <input id="classifier" value="/models/yamnet_classifier.tflite" />
+      <label for="embedder">Embedder task file</label>
+      <input id="embedder" value="/models/yamnet_embedder.tflite" />
+    </fieldset>
+
+    <button id="start">Start</button>
+    <button id="stop" disabled>Stop</button>
+    <p class="status" id="status">Idle.</p>
+
+    <fieldset>
+      <legend>Level</legend>
+      <div class="meter"><div id="level"></div></div>
+      <p class="status" id="levelText">—</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Top classes</legend>
+      <table><tbody id="classes"></tbody></table>
+    </fieldset>
+
+    <fieldset>
+      <legend>Features</legend>
+      <table><tbody id="features"></tbody></table>
+    </fieldset>
+
+    <fieldset>
+      <legend>Applied constraints</legend>
+      <pre id="constraints">—</pre>
+    </fieldset>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

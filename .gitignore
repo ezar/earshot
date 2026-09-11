@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.eval-data/
+.eval-out/
+coverage/
+*.log
+.DS_Store
+.vite/

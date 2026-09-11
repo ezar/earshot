@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version` input: pnpm/action-setup refuses when the version is
+      # given both here and as `packageManager` in package.json, and
+      # `packageManager` is the pin that also governs local development.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Consumers type-check earshot's sources, so this is the check that
+      # matters most: it runs under the same strictness their projects use.
+      - run: pnpm typecheck
+
+      - run: pnpm test
