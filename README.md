@@ -20,10 +20,14 @@ MIT licensed. Distributed from GitHub release tags, not npm.
 // package.json
 {
   "dependencies": {
-    "earshot": "github:ezar/earshot#v0.3.0"
+    "earshot": "github:ezar/earshot#v0.4.0"
   }
 }
 ```
+
+> **Do not use `v0.3.0`.** `createEngine` cannot load a model in any browser on
+> that tag, so nothing needing a class score or an embedding works. `v0.4.0` is
+> the first usable release; see the migration note in `CHANGELOG.md`.
 
 Always depend on a tag, never on a branch. There is no build step: the `exports`
 map points at the TypeScript sources, and there are no install or prepare
@@ -239,7 +243,7 @@ window would ever flag.
 > // package.json
 > {
 >   "dependencies": {
->     "earshot": "github:ezar/earshot#v0.3.0",
+>     "earshot": "github:ezar/earshot#v0.4.0",
 >     "@mediapipe/tasks-audio": "<=0.10.21"
 >   }
 > }

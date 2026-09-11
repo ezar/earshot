@@ -1,6 +1,6 @@
 {
   "name": "earshot",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Framework-agnostic in-browser audio engine: capture, DSP features, local audio models, anomaly profiles and vocalization events.",
   "license": "MIT",
   "type": "module",

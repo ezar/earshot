@@ -5,80 +5,92 @@ All notable changes to earshot are recorded here. The format follows
 semantic versioning with the 0.x convention that **breaking changes bump MINOR**
 and come with a migration note.
 
-## [Unreleased]
+## [0.4.0] — 2026-09-11
+
+A MINOR bump rather than a PATCH: consumers must change their Vite config, and
+this project's convention is that breaking changes bump MINOR while in 0.x.
+
+**0.3.0 should not be used.** `createEngine` cannot load a model in any browser
+on that tag — both defects below were present — so anything needing a class
+score or an embedding fails. There is no workaround within 0.3.0.
+
+### Migration from 0.3.0
+
+1. Change `worker.format` in your Vite config:
+
+   ```diff
+    export default defineConfig({
+      optimizeDeps: { exclude: ['earshot'] },
+   -  worker: { format: 'es' },
+   +  worker: { format: 'iife' },
+    });
+   ```
+
+   The engine worker is now a classic worker. `worker.format` is global, so if
+   your app has module workers of its own, they must become IIFE too.
+
+2. Move any development of the model path off `vite dev`. Vite serves workers as
+   ES modules in development whatever `worker.format` says, so the engine cannot
+   load MediaPipe there. Use `vite build --watch` with `vite preview`. Capture,
+   levels, features, pitch and segmentation never touch a model and are
+   unaffected.
+
+3. Nothing else changes. No API signature, type or return shape moved.
 
 ### Fixed
 
 - `defaultTasksAudioLoader` held the MediaPipe specifier in a variable behind
   `@vite-ignore`, so no browser could resolve it and `createEngine` could never
   load a model. The specifier is now static, so the consumer's bundler resolves
-  it. Found by running the evaluation harness against the real models for the
-  first time; see `docs/decisions/0007-*.md`.
-
-### Added
-
-- `pnpm eval:fetch --models` downloads the YAMNet task files and stages the
-  MediaPipe WASM assets. The harness previously assumed they were already in
-  place and could not run a single window without them.
-- `docs/eval-results.md` now carries measured numbers for model loading,
-  inference cost and pipeline sanity against real YAMNet, and says plainly which
-  suites are blocked and why.
+  it and bundles it into the worker chunk.
+- `CHANGELOG.md` and `docs/eval-results.md` reported 169 unit tests; the count
+  is 173.
 
 ### Changed
 
-- **The engine worker is now a classic worker.** MediaPipe's WASM loader calls
-  `importScripts`, which an ES module worker does not support, so `createEngine`
-  could not load a model in any consuming app. Consumers must set
-  `worker: { format: 'iife' }` in their Vite config instead of `'es'`. Verified
-  end to end with the real models. See `docs/decisions/0007-*.md`.
-
-### Notes
-
-**The model path does not run under `vite dev`.** Vite serves workers as ES
-modules in development whatever `worker.format` says, so the engine hits the
-`importScripts` failure there; the build path works. `pnpm playground` now
-builds and previews, and `pnpm playground:dsp` keeps the dev server for the
-DSP-only work. Everything that does not touch MediaPipe is unaffected in every
-mode.
-
-**Per-window cost is over budget.** 43.6 ms for embed + classify + features on a
-desktop container, against a 30 ms target on a 2022 mid-range Android. The
-models account for 17.4 ms of that; the rest is the feature extractor.
-
-### Changed
-
+- **The engine worker is a classic worker.** MediaPipe loads its WASM glue with
+  `importScripts`, which an ES module worker does not support, and its fallback
+  needs a `document` a worker does not have. See the migration note above and
+  `docs/decisions/0007-mediapipe-cannot-load-in-a-module-worker.md`.
 - Toolchain moved to the current releases: TypeScript 7.0.2 (from 5.7), Vite
   8.3.0 (from 6.0), Vitest 5.0.0 (from 2.1), `@types/node` 22.20.2, Playwright
   1.63.0. Node stays on 22, which every one of them supports.
 - `TasksAudioModule.AudioEmbedder` is now optional, and `createEmbedder` throws
   a message naming the version constraint when the loaded MediaPipe build does
   not provide it. `EMBEDDER_MAX_VERSION` is exported.
+- `pnpm playground` builds and previews instead of running the dev server, since
+  the model path needs a build. `pnpm playground:dsp` keeps the dev server for
+  work that touches no model.
 
 ### Added
 
 - CI job `typescript-compatibility`: the sources are type-checked against
   TypeScript 5, 6 and 7. Consumers compile these sources with their own
   compiler, so the pinned version alone proves nothing; all three pass.
-
-### Fixed
-
-- `CHANGELOG.md` and `docs/eval-results.md` reported 169 unit tests; the count
-  is 173.
+- `pnpm eval:fetch --models` downloads the YAMNet task files and stages the
+  MediaPipe WASM assets. The harness previously assumed they were already in
+  place and could not run a single window without them.
+- `docs/eval-results.md` carries measured numbers for model loading, inference
+  cost and pipeline sanity against real YAMNet, and says plainly which suites
+  are blocked and why.
 
 ### Notes
 
-**MediaPipe removed `AudioEmbedder`.** It ships in `@mediapipe/tasks-audio` up
-to 0.10.21 and is absent from 0.10.32 onward, including 1.x, from both the types
-and the runtime bundle — while the package README still documents it. Apps that
-need embeddings (the `'embedding'` feature space, Meowlogue's kNN identity) must
-pin `"@mediapipe/tasks-audio": "<=0.10.21"`. The classifier is unaffected on
-every release, so the peer range stays permissive and classifier-only apps can
-use the latest. Full analysis in
-`docs/decisions/0006-mediapipe-dropped-the-audio-embedder.md`.
+**The evaluation harness ran against real models for the first time**, and that
+is what found both defects above. Unit tests could not have: they use injected
+stand-ins, so nothing had ever asked a browser to load MediaPipe.
 
-The other peer ranges already admit their latest releases and are unchanged:
-`@huggingface/transformers` (latest 4.2.0, range `>=3`) and `@tensorflow/tfjs`
-(latest 4.22.0, range `>=4`).
+**Per-window cost is over budget.** 35.5-43.6 ms across three runs for embed +
+classify + features on a desktop container, against a 30 ms target on a 2022
+mid-range Android. The models account for 17.4 ms; the rest is the feature
+extractor.
+
+**The dataset suites are still unrun.** `zenodo.org` was unreachable from the
+environment this work was done in, so MIMII, ToyADMOS and CatMeows could not be
+downloaded and every target in `docs/eval-results.md` remains unmeasured.
+
+**MediaPipe pinning is unchanged** from 0.3.0: apps needing embeddings must pin
+`"@mediapipe/tasks-audio": "<=0.10.21"`.
 
 ## [0.3.0] — 2026-09-11
 
@@ -195,4 +207,5 @@ recorded in full in `docs/decisions/`:
   injected module stand-ins; neither has been run against the real
   `@huggingface/transformers` or `@tensorflow/tfjs`.
 
+[0.4.0]: https://github.com/ezar/earshot/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ezar/earshot/releases/tag/v0.3.0
