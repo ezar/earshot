@@ -13,7 +13,7 @@
  */
 
 import { createWriteStream } from 'node:fs';
-import { mkdir, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
@@ -45,13 +45,62 @@ const DATASETS = {
   },
 };
 
+/**
+ * The YAMNet task files and the MediaPipe WASM assets the evaluation page needs.
+ * These are not datasets and carry no dataset licence, but the harness cannot
+ * run a single window without them, so `--models` fetches them too.
+ */
+const MODEL_FILES = [
+  [
+    'yamnet_classifier.tflite',
+    'https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite',
+  ],
+  [
+    'yamnet_embedder.tflite',
+    'https://storage.googleapis.com/mediapipe-assets/yamnet_embedding_metadata.tflite',
+  ],
+];
+
 const requested = process.argv.slice(2);
 const names = requested.includes('--all') ? Object.keys(DATASETS) : requested.filter((name) => name in DATASETS);
 
-if (names.length === 0) {
-  console.error('Usage: node scripts/eval/fetch-datasets.mjs [--all | mimii | toyadmos | catmeows]');
+const wantsModels = requested.includes('--models') || requested.includes('--all');
+
+if (names.length === 0 && !wantsModels) {
+  console.error('Usage: node scripts/eval/fetch-datasets.mjs [--all | --models | mimii | toyadmos | catmeows]');
   console.error('Licences are listed in docs/datasets.md; read them before downloading.');
   process.exit(1);
+}
+
+if (wantsModels) {
+  const modelDir = join(root, 'scripts', 'eval', 'public', 'models');
+  console.log('\nmodels — YAMNet task files and MediaPipe WASM assets');
+  await mkdir(join(modelDir, 'wasm'), { recursive: true });
+  for (const [name, url] of MODEL_FILES) {
+    const target = join(modelDir, name);
+    if (await exists(target)) {
+      console.log(`  already present: ${name}`);
+      continue;
+    }
+    console.log(`  downloading ${name}`);
+    const response = await fetch(url);
+    if (!response.ok || response.body === null) {
+      console.error(`  failed (${response.status}); fetch it manually into ${target}`);
+      continue;
+    }
+    await pipeline(Readable.fromWeb(response.body), createWriteStream(target));
+  }
+  // The WASM assets ship inside the npm package, so they are copied rather than
+  // downloaded — and they must come from a build that still has AudioEmbedder.
+  const wasmSource = join(root, 'node_modules', '@mediapipe', 'tasks-audio', 'wasm');
+  if (await exists(wasmSource)) {
+    for (const file of await readdir(wasmSource)) {
+      await copyFile(join(wasmSource, file), join(modelDir, 'wasm', file));
+    }
+    console.log('  copied the MediaPipe WASM assets from node_modules');
+  } else {
+    console.error('  @mediapipe/tasks-audio is not installed; run pnpm install first');
+  }
 }
 
 for (const name of names) {

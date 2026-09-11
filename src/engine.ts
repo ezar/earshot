@@ -23,7 +23,12 @@ export interface EngineOptions {
   readonly features?: FeatureOptions;
   /** Sample rate of the audio that will be pushed, in Hz. Defaults to {@link SAMPLE_RATE_HZ}. */
   readonly sampleRateHz?: number;
-  /** Construct the Worker yourself, e.g. to control its name or credentials. */
+  /**
+   * Construct the Worker yourself, e.g. to control its name or credentials.
+   *
+   * The default builds a **classic** worker, which is what MediaPipe needs;
+   * override this only if you are supplying models some other way.
+   */
   readonly createWorker?: (url: string) => Worker;
 }
 
@@ -122,6 +127,18 @@ export async function createEngine(options: EngineOptions): Promise<Engine> {
   };
 }
 
+/**
+ * Create the engine worker as a **classic** worker.
+ *
+ * MediaPipe loads its WASM glue with `importScripts`, which an ES module worker
+ * does not support, and falls back to injecting a `<script>` element, which
+ * needs a `document` a worker does not have. A classic worker is the only
+ * context where both the models and the Worker requirement can hold at once;
+ * see `docs/decisions/0007-mediapipe-cannot-load-in-a-module-worker.md`.
+ *
+ * Consumers must therefore build workers as IIFE, not ESM:
+ * `worker: { format: 'iife' }` in `vite.config.ts`.
+ */
 function defaultCreateWorker(url: string): Worker {
-  return new Worker(url, { type: 'module', name: 'earshot-engine' });
+  return new Worker(url, { name: 'earshot-engine' });
 }

@@ -7,6 +7,44 @@ and come with a migration note.
 
 ## [Unreleased]
 
+### Fixed
+
+- `defaultTasksAudioLoader` held the MediaPipe specifier in a variable behind
+  `@vite-ignore`, so no browser could resolve it and `createEngine` could never
+  load a model. The specifier is now static, so the consumer's bundler resolves
+  it. Found by running the evaluation harness against the real models for the
+  first time; see `docs/decisions/0007-*.md`.
+
+### Added
+
+- `pnpm eval:fetch --models` downloads the YAMNet task files and stages the
+  MediaPipe WASM assets. The harness previously assumed they were already in
+  place and could not run a single window without them.
+- `docs/eval-results.md` now carries measured numbers for model loading,
+  inference cost and pipeline sanity against real YAMNet, and says plainly which
+  suites are blocked and why.
+
+### Changed
+
+- **The engine worker is now a classic worker.** MediaPipe's WASM loader calls
+  `importScripts`, which an ES module worker does not support, so `createEngine`
+  could not load a model in any consuming app. Consumers must set
+  `worker: { format: 'iife' }` in their Vite config instead of `'es'`. Verified
+  end to end with the real models. See `docs/decisions/0007-*.md`.
+
+### Notes
+
+**The model path does not run under `vite dev`.** Vite serves workers as ES
+modules in development whatever `worker.format` says, so the engine hits the
+`importScripts` failure there; the build path works. `pnpm playground` now
+builds and previews, and `pnpm playground:dsp` keeps the dev server for the
+DSP-only work. Everything that does not touch MediaPipe is unaffected in every
+mode.
+
+**Per-window cost is over budget.** 43.6 ms for embed + classify + features on a
+desktop container, against a 30 ms target on a 2022 mid-range Android. The
+models account for 17.4 ms of that; the rest is the feature extractor.
+
 ### Changed
 
 - Toolchain moved to the current releases: TypeScript 7.0.2 (from 5.7), Vite

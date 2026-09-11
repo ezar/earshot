@@ -11,13 +11,13 @@ importers:
       '@huggingface/transformers':
         specifier: '>=3'
         version: 4.2.0
-      '@mediapipe/tasks-audio':
-        specifier: '>=0.10'
-        version: 1.0.1
       '@tensorflow/tfjs':
         specifier: '>=4'
         version: 4.22.0(seedrandom@3.0.5)
     devDependencies:
+      '@mediapipe/tasks-audio':
+        specifier: 0.10.21
+        version: 0.10.21
       '@types/node':
         specifier: ^22
         version: 22.20.2
@@ -212,8 +212,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@mediapipe/tasks-audio@1.0.1':
-    resolution: {integrity: sha512-znfNNj9p6sAfsmrK+mjpW5H2NdWEcyvebjIcxjM3onv5God5S//fT4wFZ76quYL9J9SSTi2EkdUCq2zjYbzK2w==}
+  '@mediapipe/tasks-audio@0.10.21':
+    resolution: {integrity: sha512-WR89YwGkzsnOPrsrb8m4nfFMH3scMNJXq2PFA2rr8brcagJ+795XUXDgTHzfakcAp757LvpZh/AAQJ/eJvii0A==}
 
   '@oxc-project/types@0.149.0':
     resolution: {integrity: sha512-Efcc+iF0j3Bf67YjEqIqWXbX5XddXoK/Mw4K1/JuXwRCZ8N16VR7iT23nlCc9XrveFVh/E5Rqs2StT0V8v9LdA==}
@@ -1238,7 +1238,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@mediapipe/tasks-audio@1.0.1': {}
+  '@mediapipe/tasks-audio@0.10.21': {}
 
   '@oxc-project/types@0.149.0': {}
 

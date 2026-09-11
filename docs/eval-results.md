@@ -10,20 +10,79 @@ tests, where ground truth is exact and no dataset licence is involved.
 
 ## Status
 
-**Not yet run.** The library's algorithms are covered by 173 unit tests on
-synthetic fixtures, and the harness below is written and ready, but no dataset
-has been downloaded or evaluated. The tables are the shape the results will
-take; the targets are inherited from the app specs.
+**Datasets: not run. Models and pipeline: run, with findings.**
 
-To produce them:
+The harness was executed for the first time on 2026-09-11 against the real
+YAMNet classifier and embedder in headless Chromium. The dataset suites could
+not be run — see [Blocked](#blocked) — but loading and driving the real models
+turned up two defects that no unit test could have caught, both recorded in
+`docs/decisions/0007-mediapipe-cannot-load-in-a-module-worker.md`:
 
-```bash
-pnpm add -D playwright && npx playwright install chromium
-pnpm eval:fetch --all            # accept the licences in docs/datasets.md first
-# unpack the archives under .eval-data/, then place the YAMNet task files and
-# MediaPipe WASM assets where EARSHOT_MODELS_DIR points
-pnpm eval:run
-```
+1. `defaultTasksAudioLoader` used a variable import specifier, so **no browser
+   could resolve MediaPipe** and `createEngine` could never load a model. Fixed.
+2. MediaPipe's WASM loader calls `importScripts`, which throws inside the ES
+   **module** worker earshot created. Fixed: the engine worker is now a classic
+   worker, and consumers set `worker: { format: 'iife' }`. Verified end to end
+   with the shipped defaults — `createEngine` loads the real models and produces
+   1024-dimension embeddings.
+
+## Blocked
+
+`zenodo.org` is denied by this environment's network policy — every request,
+including the site root and the API, is refused at CONNECT with HTTP 403. MIMII,
+ToyADMOS and CatMeows are all hosted there, so none could be downloaded. This is
+an environment limitation, not a licence or harness problem: run
+`pnpm eval:fetch --all` from a machine that can reach Zenodo and the suites
+below will produce numbers.
+
+## Model loading and inference (measured)
+
+Real `yamnet_classifier.tflite` (4.1 MB) and `yamnet_embedder.tflite` (12.9 MB),
+MediaPipe `@mediapipe/tasks-audio@0.10.21`, headless Chromium in a desktop
+container.
+
+| Metric | Value | Notes |
+| --- | --- | --- |
+| Model load, main thread | 1094 ms | classifier + embedder |
+| Model load, classic worker | 1137-1408 ms | end to end through `createEngine` |
+| Model load, module worker | **fails** | see decision `0007` |
+| Embedding dimensions | 1024 | matches `EMBEDDING_DIMENSIONS` |
+| classify + embed, one window | 17.4 ms | models only |
+| Full engine, one window | 35.5-43.6 ms | embed + classify + features, over 3 runs |
+
+The full-engine figure is **above the 30 ms target** in every run, on a desktop
+container considerably faster than the 2022 mid-range Android phone the target
+names. The gap between 17.4 ms and the full figure is the feature extractor, not
+the models, which is where any optimisation should start.
+
+Also measured: `vite dev` cannot run the model path at all, whatever
+`worker.format` says — see decision `0007` for the four combinations tested.
+
+## Pipeline sanity against real audio (measured)
+
+Synthetic probes with known content, classified by the real model. This is not
+an accuracy benchmark — it checks that the pipeline is wired correctly and that
+the label strings the guards and the event detector match are the ones YAMNet
+actually emits.
+
+| Probe | Top classes |
+| --- | --- |
+| 1 kHz sine | `Beep, bleep` 0.74, `Sine wave` 0.15, `Chirp tone` 0.04 |
+| White noise | `Spray` 0.59, `Liquid` 0.41, `Hiss` 0.20 |
+| Digital silence | `Silence` 0.80 |
+| Harmonic call, rising-falling f0 | `Siren` 0.20, `Alarm` 0.15, `Screaming` 0.15 |
+| 120 Hz tone + noise (motor-like) | `Sine wave` 0.33, `White noise` 0.26, `Hum` 0.15 |
+
+Labels arrive as title-case English strings via `categoryName`, which is the
+form `INTERFERENCE_CLASSES` and `HUMAN_VOICE_CLASSES` assume; `Silence` and
+`Screaming` appear verbatim. The trigger classes for real cat audio
+(`Cat`, `Meow`, `Caterwaul`) remain unverified — a synthetic harmonic sweep is
+not a meow, and CatMeows is what would settle it.
+
+Features computed on white noise by the full engine: spectral flatness 0.987
+(white noise should approach 1), spectral centroid 4031 Hz (a flat spectrum to
+8 kHz has its centroid near 4 kHz), RMS −18.7 dBFS. All three are physically
+correct on real model-fed audio, not just on fixtures.
 
 ## Anomaly detection (MIMII, -6 dB SNR)
 
@@ -32,16 +91,16 @@ abnormal clip are scored, and the ROC AUC is computed over those scores.
 
 | Machine | AUC | Target | Result |
 | --- | --- | --- | --- |
-| fan | — | > 0.80 | not run |
-| pump | — | > 0.80 | not run |
-| valve | — | > 0.80 | not run |
+| fan | — | > 0.80 | blocked: dataset unreachable |
+| pump | — | > 0.80 | blocked: dataset unreachable |
+| valve | — | > 0.80 | blocked: dataset unreachable |
 
 ## Anomaly detection (ToyADMOS, DCASE 2020 Task 2 development set)
 
 | Machine | AUC | Target | Result |
 | --- | --- | --- | --- |
-| ToyCar | — | — | not run |
-| ToyConveyor | — | — | not run |
+| ToyCar | — | — | blocked: dataset unreachable |
+| ToyConveyor | — | — | blocked: dataset unreachable |
 
 ## Vocalization detection and identity (CatMeows)
 
@@ -51,8 +110,8 @@ with at least ten clips, capped at ten examples per cat.
 
 | Metric | Value | Target | Result |
 | --- | --- | --- | --- |
-| Meow detection recall | — | > 90 % | not run |
-| Pair identity accuracy | — | > 80 % | not run |
+| Meow detection recall | — | > 90 % | blocked: dataset unreachable |
+| Pair identity accuracy | — | > 80 % | blocked: dataset unreachable |
 
 ## Performance
 
@@ -61,4 +120,18 @@ mid-range Android phone.
 
 | Device | Per window | Target | Result |
 | --- | --- | --- | --- |
-| — | — | < 30 ms | not measured |
+| Desktop container, headless Chromium | 35.5-43.6 ms | < 30 ms | **over budget** |
+| 2022 mid-range Android | — | < 30 ms | not measured |
+
+## Reproducing
+
+```bash
+pnpm add -D playwright && npx playwright install chromium
+pnpm eval:fetch --models          # YAMNet task files + MediaPipe WASM assets
+pnpm eval:fetch --all             # datasets; accept the licences in docs/datasets.md
+# unpack the archives under .eval-data/
+pnpm eval:run
+```
+
+`--models` is enough to reproduce every measured number on this page; the
+dataset suites need the rest.
