@@ -50,6 +50,7 @@
     }
   },
   "devDependencies": {
+    "@mediapipe/tasks-audio": "0.10.21",
     "@types/node": "^22",
     "playwright": "^1.63.0",
     "typescript": "^7.0.2",

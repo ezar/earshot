@@ -77,8 +77,7 @@ export type TasksAudioLoader = () => Promise<TasksAudioModule>;
  * their own loader instead.
  */
 export const defaultTasksAudioLoader: TasksAudioLoader = async () => {
-  const specifier = '@mediapipe/tasks-audio';
-  const module: unknown = await import(/* @vite-ignore */ specifier);
+  const module: unknown = await import('@mediapipe/tasks-audio');
   return module as TasksAudioModule;
 };
 
