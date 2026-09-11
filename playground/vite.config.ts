@@ -12,4 +12,14 @@ export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   server: { port: 5174, open: true },
   worker: { format: 'es' },
+  build: {
+    // Emit the capture worklet as a real file rather than inlining it.
+    // At ~2.4 kB it sits under Vite's default 4 kB threshold, so a build would
+    // otherwise hand `audioWorklet.addModule` a `data:` URL. Chromium accepts
+    // one — `pnpm smoke` checks both paths — but support is not universal, and
+    // the playground exists to catch what breaks in a real browser first. This
+    // is the same setting the README recommends to consumers who are unsure of
+    // their target.
+    assetsInlineLimit: 0,
+  },
 });
