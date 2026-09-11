@@ -5,6 +5,43 @@ All notable changes to earshot are recorded here. The format follows
 semantic versioning with the 0.x convention that **breaking changes bump MINOR**
 and come with a migration note.
 
+## [Unreleased]
+
+### Changed
+
+- Toolchain moved to the current releases: TypeScript 7.0.2 (from 5.7), Vite
+  8.3.0 (from 6.0), Vitest 5.0.0 (from 2.1), `@types/node` 22.20.2, Playwright
+  1.63.0. Node stays on 22, which every one of them supports.
+- `TasksAudioModule.AudioEmbedder` is now optional, and `createEmbedder` throws
+  a message naming the version constraint when the loaded MediaPipe build does
+  not provide it. `EMBEDDER_MAX_VERSION` is exported.
+
+### Added
+
+- CI job `typescript-compatibility`: the sources are type-checked against
+  TypeScript 5, 6 and 7. Consumers compile these sources with their own
+  compiler, so the pinned version alone proves nothing; all three pass.
+
+### Fixed
+
+- `CHANGELOG.md` and `docs/eval-results.md` reported 169 unit tests; the count
+  is 173.
+
+### Notes
+
+**MediaPipe removed `AudioEmbedder`.** It ships in `@mediapipe/tasks-audio` up
+to 0.10.21 and is absent from 0.10.32 onward, including 1.x, from both the types
+and the runtime bundle — while the package README still documents it. Apps that
+need embeddings (the `'embedding'` feature space, Meowlogue's kNN identity) must
+pin `"@mediapipe/tasks-audio": "<=0.10.21"`. The classifier is unaffected on
+every release, so the peer range stays permissive and classifier-only apps can
+use the latest. Full analysis in
+`docs/decisions/0006-mediapipe-dropped-the-audio-embedder.md`.
+
+The other peer ranges already admit their latest releases and are unchanged:
+`@huggingface/transformers` (latest 4.2.0, range `>=3`) and `@tensorflow/tfjs`
+(latest 4.22.0, range `>=4`).
+
 ## [0.3.0] — 2026-09-11
 
 First release covering milestones E0 through E3. The whole library lands at once
@@ -77,7 +114,7 @@ together; subsequent releases will be incremental.
 
 **Repository**
 
-- 169 unit tests on synthetic fixtures (`fixtures/synthetic/`).
+- 173 unit tests on synthetic fixtures (`fixtures/synthetic/`).
 - `playground/`: a Vite page for live capture in a real browser.
 - `scripts/smoke/`: a headless-Chromium check that the AudioWorklet processor
   loads and runs, both as a served asset and as an inlined `data:` URL. This

@@ -41,6 +41,18 @@ Because your project type-checks earshot's sources, they compile cleanly under
 | `@huggingface/transformers` | `earshot/clap` | yes |
 | `@tensorflow/tfjs` | `earshot/mlp` | yes |
 
+> **If you need embeddings, pin `"@mediapipe/tasks-audio": "<=0.10.21"`.**
+> MediaPipe removed `AudioEmbedder` from 0.10.32 onward, including 1.x — it is
+> gone from both the types and the runtime bundle, though the package README
+> still documents it. The classifier is unaffected and works on every release.
+>
+> Embeddings drive the `'embedding'` feature space and the kNN identity
+> classifier. Without them, `createEngine` runs classifier-only and
+> `learnProfile` falls back to the `'features'` space automatically;
+> `createEmbedder` throws with this constraint spelled out rather than failing
+> on an undefined reference. `EMBEDDER_MAX_VERSION` is exported so you can
+> assert on it. See `docs/decisions/0006-*.md`.
+
 ### Vite configuration
 
 ```ts

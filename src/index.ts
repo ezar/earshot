@@ -96,7 +96,7 @@ export { createClassifier, maxScoreOf, mergeClassifications, scoreOf } from './m
 export type { Classifier, ClassifierOptions } from './models/classifier.js';
 export { averageEmbeddings, createEmbedder } from './models/embedder.js';
 export type { Embedder, EmbedderOptions } from './models/embedder.js';
-export { defaultTasksAudioLoader } from './models/tasks-audio.js';
+export { defaultTasksAudioLoader, EMBEDDER_MAX_VERSION } from './models/tasks-audio.js';
 export type { ModelUrls, TasksAudioLoader, TasksAudioModule } from './models/tasks-audio.js';
 
 // Guards.

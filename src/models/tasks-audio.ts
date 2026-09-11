@@ -37,7 +37,14 @@ export interface TasksAudioEmbedder {
   close(): void;
 }
 
-/** The MediaPipe module surface earshot uses. */
+/**
+ * The MediaPipe module surface earshot uses.
+ *
+ * `AudioEmbedder` is optional because MediaPipe removed it: it ships in
+ * `@mediapipe/tasks-audio` up to and including 0.10.21 and is absent from
+ * 0.10.32 onwards, including 1.x. See {@link EMBEDDER_MAX_VERSION} and
+ * `docs/decisions/0006-mediapipe-dropped-the-audio-embedder.md`.
+ */
 export interface TasksAudioModule {
   readonly FilesetResolver: {
     forAudioTasks(wasmBaseUrl: string): Promise<unknown>;
@@ -45,10 +52,19 @@ export interface TasksAudioModule {
   readonly AudioClassifier: {
     createFromOptions(fileset: unknown, options: unknown): Promise<TasksAudioClassifier>;
   };
-  readonly AudioEmbedder: {
+  readonly AudioEmbedder?: {
     createFromOptions(fileset: unknown, options: unknown): Promise<TasksAudioEmbedder>;
   };
 }
+
+/**
+ * Last `@mediapipe/tasks-audio` release that ships `AudioEmbedder`.
+ *
+ * The classifier is present in every supported release; the embedder is not.
+ * An app that needs embeddings — a profile in the `'embedding'` feature space,
+ * or Meowlogue's kNN identity — must pin at or below this version.
+ */
+export const EMBEDDER_MAX_VERSION = '0.10.21';
 
 /** A function that resolves the MediaPipe Tasks Audio module. */
 export type TasksAudioLoader = () => Promise<TasksAudioModule>;
