@@ -111,7 +111,7 @@ export async function createEngine(options: EngineOptions): Promise<Engine> {
   const ready = await send({
     type: 'init',
     id: nextId++,
-    models: options.models,
+    models: resolveModelUrls(options.models),
     ...(options.features === undefined ? {} : { features: options.features }),
     ...(options.guards === undefined ? {} : { guards: options.guards }),
     ...(options.embedRejectedWindows === undefined
@@ -161,6 +161,33 @@ export async function createEngine(options: EngineOptions): Promise<Engine> {
  * Consumers must therefore build workers as IIFE, not ESM:
  * `worker: { format: 'iife' }` in `vite.config.ts`.
  */
+/**
+ * Resolve model URLs against the document, not the worker.
+ *
+ * The worker resolves a relative URL against its own script — which a bundler
+ * puts in `assets/` — so `./models/wasm` quietly becomes `assets/models/wasm`
+ * and MediaPipe fails to load with a 404 that names a path the app never wrote.
+ * Resolving here, on the main thread, makes a relative URL mean what the author
+ * meant: relative to the page.
+ *
+ * @param models - Model locations as the app supplied them.
+ * @param base - Base to resolve against; defaults to the document's URL.
+ * @returns The same locations, absolute. Already-absolute URLs pass through.
+ */
+export function resolveModelUrls(
+  models: Omit<ModelUrls, 'loadTasksAudio'>,
+  base: string | undefined = typeof location === 'undefined' ? undefined : location.href,
+): Omit<ModelUrls, 'loadTasksAudio'> {
+  if (base === undefined) return models;
+  const absolute = (url: string): string => new URL(url, base).href;
+  return {
+    ...models,
+    wasmBaseUrl: absolute(models.wasmBaseUrl),
+    ...(models.classifierUrl === undefined ? {} : { classifierUrl: absolute(models.classifierUrl) }),
+    ...(models.embedderUrl === undefined ? {} : { embedderUrl: absolute(models.embedderUrl) }),
+  };
+}
+
 function defaultCreateWorker(url: string): Worker {
   return new Worker(url, { name: 'earshot-engine' });
 }

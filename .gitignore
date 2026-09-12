@@ -2,6 +2,7 @@ node_modules/
 dist/
 .eval-data/
 .eval-out/
+.bench-out/
 scripts/eval/public/
 coverage/
 *.log

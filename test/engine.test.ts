@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { SAMPLE_RATE_HZ, WINDOW_SAMPLES } from '../src/constants.js';
-import { createEngine } from '../src/engine.js';
+import { createEngine, resolveModelUrls } from '../src/engine.js';
 import { createClassifier, maxScoreOf, mergeClassifications, scoreOf } from '../src/models/classifier.js';
 import { averageEmbeddings, createEmbedder } from '../src/models/embedder.js';
 import { EMBEDDER_MAX_VERSION } from '../src/models/tasks-audio.js';
@@ -195,6 +195,44 @@ describe('createEngine', () => {
     await expect(
       createEngine({ workerUrl: 'x', models, createWorker: () => failing as unknown as Worker }),
     ).rejects.toThrow(/model not found/);
+  });
+});
+
+describe('resolveModelUrls', () => {
+  const base = 'https://app.example/bench/index.html';
+
+  it('resolves relative URLs against the document, not the worker chunk', () => {
+    // The worker would otherwise resolve './models/wasm' against its own script
+    // in assets/, producing assets/models/wasm and a 404.
+    const resolved = resolveModelUrls(
+      { wasmBaseUrl: './models/wasm', classifierUrl: './models/c.tflite', embedderUrl: './models/e.tflite' },
+      base,
+    );
+    expect(resolved.wasmBaseUrl).toBe('https://app.example/bench/models/wasm');
+    expect(resolved.classifierUrl).toBe('https://app.example/bench/models/c.tflite');
+    expect(resolved.embedderUrl).toBe('https://app.example/bench/models/e.tflite');
+  });
+
+  it('resolves root-relative URLs', () => {
+    expect(resolveModelUrls({ wasmBaseUrl: '/models/wasm' }, base).wasmBaseUrl).toBe(
+      'https://app.example/models/wasm',
+    );
+  });
+
+  it('leaves absolute URLs alone', () => {
+    const absolute = 'https://cdn.example/wasm';
+    expect(resolveModelUrls({ wasmBaseUrl: absolute }, base).wasmBaseUrl).toBe(absolute);
+  });
+
+  it('omits the model URLs that were not supplied', () => {
+    const resolved = resolveModelUrls({ wasmBaseUrl: '/w' }, base);
+    expect('classifierUrl' in resolved).toBe(false);
+    expect('embedderUrl' in resolved).toBe(false);
+  });
+
+  it('passes everything through when there is no document to resolve against', () => {
+    const models = { wasmBaseUrl: './models/wasm' };
+    expect(resolveModelUrls(models, undefined)).toEqual(models);
   });
 });
 

@@ -9,6 +9,12 @@ and come with a migration note.
 
 ### Added
 
+- **A device benchmark.** `pnpm bench` builds a page and serves it on the local
+  network; open it on a phone and it measures the engine's per-window cost with
+  the real models, against the 30 ms target. It uses no microphone — the audio
+  is generated in the page — which is what lets it run over a plain LAN address
+  with no HTTPS, no hosting and no certificate. Instructions and the reasoning
+  in `docs/benchmarking-on-a-phone.md`.
 - **`createEngine({ guards })` runs the guards inside the worker** and attaches
   the verdict to every window as `guard` — and skips the embedder for windows it
   rejects. The embedder is over half the per-window cost, and an embedding the
@@ -36,6 +42,16 @@ and come with a migration note.
   A 512-point transform goes from 0.018 ms to 0.008 ms.
 - `Fft` now requires a size of at least 4, since the real-input path needs a
   half-length complex transform. Sizes below that were never usable for audio.
+
+### Fixed
+
+- **Relative model URLs resolved against the worker chunk rather than the page.**
+  `wasmBaseUrl: './models/wasm'` quietly became `assets/models/wasm`, because the
+  worker resolves a relative URL against its own script, and MediaPipe failed
+  with a 404 naming a path the app never wrote. `createEngine` now resolves the
+  model URLs on the main thread before sending them. Absolute URLs are
+  unaffected. Found while building the device benchmark, which uses relative
+  paths so its output folder can be served from anywhere.
 
 ### Fixed
 

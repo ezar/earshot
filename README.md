@@ -365,7 +365,12 @@ pnpm typecheck     # tsc --noEmit under the consumers' strictness
 pnpm playground    # a real browser: builds, then previews (models need a build)
 pnpm playground:dsp # dev server, for the DSP-only path
 pnpm smoke         # headless Chromium: loads the worklet and checks it runs
+pnpm bench         # build a benchmark page and serve it to a phone on your LAN
 ```
+
+`pnpm bench` answers the one question CI cannot: what the engine costs on real
+hardware. It needs no HTTPS and no hosting — the page uses no microphone, so a
+plain LAN address is enough. See `docs/benchmarking-on-a-phone.md`.
 
 `pnpm smoke` needs Playwright and a browser
 (`pnpm add -D playwright && npx playwright install chromium`). It covers the one
