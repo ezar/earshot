@@ -45,23 +45,35 @@ export interface SpectrogramOptions {
 }
 
 /**
- * Compute the magnitude spectrogram of a buffer.
+ * A reusable spectrogram analyzer.
  *
- * Magnitudes are normalized by the window's coherent gain, so a full-scale
- * sine lands near 0 dBFS in its bin regardless of the window length.
+ * The transform tables, the analysis window and every scratch buffer are built
+ * once and reused, which matters because the engine runs this on every window:
+ * building them per call rebuilt ~1 k table entries and allocated ~100 kB each
+ * time, and that alone was over half the feature extractor's cost.
  */
-export function computeSpectrogram(samples: Float32Array, options: SpectrogramOptions = {}): Spectrogram {
+export interface SpectrogramAnalyzer {
+  /**
+   * Analyse one buffer.
+   *
+   * The returned {@link Spectrogram} borrows this analyzer's internal buffer and
+   * is only valid until the next call. Copy `data` if you need to keep it, or
+   * use {@link computeSpectrogram}, which allocates a fresh one each time.
+   */
+  analyze(samples: Float32Array): Spectrogram;
+}
+
+/**
+ * Create a reusable analyzer for a fixed geometry.
+ *
+ * @param options - Window, hop, transform size and sample rate.
+ */
+export function createSpectrogramAnalyzer(options: SpectrogramOptions = {}): SpectrogramAnalyzer {
   const windowSamples = options.windowSamples ?? STFT_WINDOW_SAMPLES;
   const hopSamples = options.hopSamples ?? STFT_HOP_SAMPLES;
   const fftSize = options.fftSize ?? FFT_SIZE;
   const sampleRateHz = options.sampleRateHz ?? SAMPLE_RATE_HZ;
-
   const bins = magnitudeBins(fftSize);
-  const frames = samples.length < windowSamples ? 0 : Math.floor((samples.length - windowSamples) / hopSamples) + 1;
-  const data = new Float32Array(frames * bins);
-  if (frames === 0) {
-    return { data, frames, bins, hopSeconds: hopSamples / sampleRateHz, sampleRateHz, fftSize };
-  }
 
   const fft = new Fft(fftSize);
   const window = hannWindow(windowSamples);
@@ -71,17 +83,47 @@ export function computeSpectrogram(samples: Float32Array, options: SpectrogramOp
 
   const windowed = new Float32Array(windowSamples);
   const magnitude = new Float32Array(bins);
-  for (let f = 0; f < frames; f += 1) {
-    const offset = f * hopSamples;
-    for (let i = 0; i < windowSamples; i += 1) {
-      windowed[i] = (samples[offset + i] as number) * (window[i] as number);
-    }
-    fft.realMagnitude(windowed, magnitude);
-    for (let b = 0; b < bins; b += 1) {
-      data[f * bins + b] = (magnitude[b] as number) * scale;
-    }
-  }
-  return { data, frames, bins, hopSeconds: hopSamples / sampleRateHz, sampleRateHz, fftSize };
+  let data = new Float32Array(0);
+
+  return {
+    analyze(samples: Float32Array): Spectrogram {
+      const frames =
+        samples.length < windowSamples ? 0 : Math.floor((samples.length - windowSamples) / hopSamples) + 1;
+      const needed = frames * bins;
+      if (data.length < needed) data = new Float32Array(needed);
+      const view = data.subarray(0, needed);
+      const geometry = { frames, bins, hopSeconds: hopSamples / sampleRateHz, sampleRateHz, fftSize };
+      if (frames === 0) return { data: view, ...geometry };
+
+      for (let f = 0; f < frames; f += 1) {
+        const offset = f * hopSamples;
+        for (let i = 0; i < windowSamples; i += 1) {
+          windowed[i] = (samples[offset + i] as number) * (window[i] as number);
+        }
+        fft.realMagnitude(windowed, magnitude);
+        const row = f * bins;
+        for (let b = 0; b < bins; b += 1) {
+          view[row + b] = (magnitude[b] as number) * scale;
+        }
+      }
+      return { data: view, ...geometry };
+    },
+  };
+}
+
+/**
+ * Compute the magnitude spectrogram of a buffer.
+ *
+ * Magnitudes are normalized by the window's coherent gain, so a full-scale
+ * sine lands near 0 dBFS in its bin regardless of the window length.
+ *
+ * This allocates a fresh analyzer and a fresh buffer on every call. To analyse
+ * many buffers of the same geometry, build one {@link createSpectrogramAnalyzer}
+ * and reuse it.
+ */
+export function computeSpectrogram(samples: Float32Array, options: SpectrogramOptions = {}): Spectrogram {
+  const borrowed = createSpectrogramAnalyzer(options).analyze(samples);
+  return { ...borrowed, data: borrowed.data.slice() };
 }
 
 /** Average the magnitude spectrogram over time into a single spectrum. */

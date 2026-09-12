@@ -72,6 +72,7 @@ export {
   averageSpectrum,
   bandEnergies,
   computeSpectrogram,
+  createSpectrogramAnalyzer,
   findPeaks,
   hzToMel,
   logMel,
@@ -81,7 +82,12 @@ export {
   spectralFlatness,
   OCTAVE_BAND_EDGES_HZ,
 } from './dsp/spectrum.js';
-export type { PeakOptions, Spectrogram, SpectrogramOptions } from './dsp/spectrum.js';
+export type {
+  PeakOptions,
+  Spectrogram,
+  SpectrogramAnalyzer,
+  SpectrogramOptions,
+} from './dsp/spectrum.js';
 export { detectOnsets, onsetPeriodicity, spectralFlux } from './dsp/onsets.js';
 export type { OnsetCurve, OnsetOptions, OnsetPeriodicity } from './dsp/onsets.js';
 export { modulationRate } from './dsp/modulation.js';

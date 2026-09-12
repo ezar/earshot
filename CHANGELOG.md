@@ -5,6 +5,34 @@ All notable changes to earshot are recorded here. The format follows
 semantic versioning with the 0.x convention that **breaking changes bump MINOR**
 and come with a migration note.
 
+## [Unreleased]
+
+### Changed
+
+- The feature extractor reuses its STFT tables, analysis window and buffers
+  instead of rebuilding them for every window, and spectral flux carries each
+  magnitude's logarithm forward rather than recomputing it as the next frame's
+  "previous" — 49 152 logarithms per window become 24 576. `extract` alone goes
+  from 3.68 ms to 2.94 ms in a Node microbenchmark (-20 %); the full engine in a
+  browser goes from 19.5 ms to 17.3 ms per window (-11 %).
+
+### Added
+
+- `createSpectrogramAnalyzer`, the reusable form of `computeSpectrogram`. The
+  one-shot function is unchanged and still allocates per call; the analyzer
+  lends its buffer and is only valid until the next call.
+- `spectralFlux` takes an optional scratch buffer.
+
+### Fixed
+
+- **The per-window figures published in 0.4.0 were wrong.** `docs/eval-results.md`
+  and the 0.4.0 changelog entry reported 35.5-43.6 ms and called the 30 ms budget
+  missed. That was measurement error: seven windows with a cold WASM runtime and
+  no warm-up discarded. Measured properly — 59 windows, four passes, first
+  discarded, median — the figure is **17.3 ms, within budget** on this hardware.
+  The target names a 2022 mid-range Android phone, which this container is not,
+  so the target itself remains unverified.
+
 ## [0.4.0] — 2026-09-11
 
 A MINOR bump rather than a PATCH: consumers must change their Vite config, and
@@ -80,10 +108,9 @@ score or an embedding fails. There is no workaround within 0.3.0.
 is what found both defects above. Unit tests could not have: they use injected
 stand-ins, so nothing had ever asked a browser to load MediaPipe.
 
-**Per-window cost is over budget.** 35.5-43.6 ms across three runs for embed +
-classify + features on a desktop container, against a 30 ms target on a 2022
-mid-range Android. The models account for 17.4 ms; the rest is the feature
-extractor.
+**Per-window cost.** Reported here as 35.5-43.6 ms and over budget; that
+measurement was wrong and is corrected in the Unreleased entry above. The
+models, not the feature extractor, dominate the cost.
 
 **The dataset suites are still unrun.** `zenodo.org` was unreachable from the
 environment this work was done in, so MIMII, ToyADMOS and CatMeows could not be

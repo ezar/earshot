@@ -24,22 +24,39 @@ export interface OnsetCurve {
 /**
  * Half-wave-rectified spectral flux between consecutive frames.
  *
+ * @param spectrogram - Magnitude spectrogram to difference.
+ * @param scratch - Optional reusable buffer of at least `spectrogram.bins`
+ *   values, to avoid an allocation per call.
+ *
  * Magnitudes are compressed logarithmically before differencing so that the
  * curve responds to relative rather than absolute level changes. The floor is
  * -120 dBFS rather than an arbitrarily small epsilon: without it, bins that
  * hold nothing but numerical noise swing by orders of magnitude in the log
  * domain and a perfectly steady tone produces as much apparent flux as a knock.
  */
-export function spectralFlux(spectrogram: Spectrogram): OnsetCurve {
+export function spectralFlux(spectrogram: Spectrogram, scratch?: Float64Array): OnsetCurve {
   const { data, frames, bins, hopSeconds } = spectrogram;
   const strength = new Float32Array(frames);
+  if (frames === 0) return { strength, hopSeconds };
+
+  // Each magnitude's logarithm is carried forward instead of being recomputed
+  // as the next frame's "previous": the obvious two-log formulation does
+  // 2 * frames * bins logarithms per window, which was a third of the whole
+  // feature extractor's cost. Float64 so the carried value is bit-identical to
+  // recomputing it.
+  const previousLog = scratch !== undefined && scratch.length >= bins ? scratch : new Float64Array(bins);
+  for (let b = 1; b < bins; b += 1) {
+    previousLog[b] = Math.log10((data[b] as number) + MAGNITUDE_FLOOR);
+  }
+
   for (let f = 1; f < frames; f += 1) {
+    const row = f * bins;
     let acc = 0;
     for (let b = 1; b < bins; b += 1) {
-      const current = Math.log10((data[f * bins + b] as number) + MAGNITUDE_FLOOR);
-      const previous = Math.log10((data[(f - 1) * bins + b] as number) + MAGNITUDE_FLOOR);
-      const diff = current - previous;
+      const current = Math.log10((data[row + b] as number) + MAGNITUDE_FLOOR);
+      const diff = current - (previousLog[b] as number);
       if (diff > 0) acc += diff;
+      previousLog[b] = current;
     }
     strength[f] = acc / Math.max(1, bins - 1);
   }

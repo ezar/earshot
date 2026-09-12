@@ -41,22 +41,40 @@ Real `yamnet_classifier.tflite` (4.1 MB) and `yamnet_embedder.tflite` (12.9 MB),
 MediaPipe `@mediapipe/tasks-audio@0.10.21`, headless Chromium in a desktop
 container.
 
+**Methodology.** 30 s of audio (59 windows) per pass, four passes, the first
+discarded as warm-up, median of the rest. An earlier revision of this page
+reported 35.5-43.6 ms and called the budget missed; that was measurement error —
+seven windows with a cold WASM runtime and no warm-up discarded. Those figures
+are withdrawn.
+
 | Metric | Value | Notes |
 | --- | --- | --- |
 | Model load, main thread | 1094 ms | classifier + embedder |
-| Model load, classic worker | 1137-1408 ms | end to end through `createEngine` |
+| Model load, classic worker | 833-1408 ms | end to end through `createEngine` |
 | Model load, module worker | **fails** | see decision `0007` |
 | Embedding dimensions | 1024 | matches `EMBEDDING_DIMENSIONS` |
-| classify + embed, one window | 17.4 ms | models only |
-| Full engine, one window | 35.5-43.6 ms | embed + classify + features, over 3 runs |
+| Full engine, one window | **17.3 ms** | classifier + embedder + features |
+| Full engine, classifier only | 8.7 ms | no embedder configured |
 
-The full-engine figure is **above the 30 ms target** in every run, on a desktop
-container considerably faster than the 2022 mid-range Android phone the target
-names. The gap between 17.4 ms and the full figure is the feature extractor, not
-the models, which is where any optimisation should start.
+The embedder costs about 8.6 ms per window, roughly half the total. Model
+inference dominates: the feature extractor is around 3 ms of the 17.3 ms, so
+even removing it entirely would not change the picture much.
 
-Also measured: `vite dev` cannot run the model path at all, whatever
-`worker.format` says — see decision `0007` for the four combinations tested.
+### Effect of the feature-extractor optimisation
+
+Same methodology, measured against the commit before it:
+
+| Configuration | Before | After | Change |
+| --- | --- | --- | --- |
+| classifier + embedder | 19.5 ms | 17.3 ms | -11 % |
+| classifier only | 9.1 ms | 8.7 ms | -4 % |
+
+In a Node microbenchmark of `extract` alone (200 repetitions), 3.68 ms to
+2.94 ms, -20 %. Two changes account for it: the STFT reuses its transform
+tables, analysis window and buffers instead of rebuilding them per window, and
+spectral flux carries each magnitude's logarithm forward instead of recomputing
+it as the next frame's "previous", halving 49 152 logarithms per window to
+24 576.
 
 ## Pipeline sanity against real audio (measured)
 
@@ -120,8 +138,14 @@ mid-range Android phone.
 
 | Device | Per window | Target | Result |
 | --- | --- | --- | --- |
-| Desktop container, headless Chromium | 35.5-43.6 ms | < 30 ms | **over budget** |
-| 2022 mid-range Android | — | < 30 ms | not measured |
+| Desktop container, headless Chromium | 17.3 ms | < 30 ms | within budget |
+| 2022 mid-range Android | — | < 30 ms | **not measured** |
+
+The target names a phone, and this container is considerably faster than one, so
+being within budget here does not establish that the target is met. A mid-range
+phone two to three times slower would sit at 35-50 ms. Measuring on real
+hardware is the only way to settle it, and the embedder — about half the cost —
+is the first thing to look at if it turns out to be missed.
 
 ## Reproducing
 
