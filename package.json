@@ -32,7 +32,9 @@
     "eval:fetch": "node scripts/eval/fetch-datasets.mjs",
     "eval:run": "node scripts/eval/run-eval.mjs",
     "smoke": "node scripts/smoke/capture-worklet.mjs",
-    "playground:dsp": "vite --config playground/vite.config.ts"
+    "playground:dsp": "vite --config playground/vite.config.ts",
+    "bench:build": "vite build --config scripts/bench/vite.config.ts",
+    "bench": "pnpm bench:build && vite preview --config scripts/bench/vite.config.ts"
   },
   "peerDependencies": {
     "@huggingface/transformers": ">=3",

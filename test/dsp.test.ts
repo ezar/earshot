@@ -9,6 +9,7 @@ import {
   averageSpectrum,
   bandEnergies,
   computeSpectrogram,
+  createSpectrogramAnalyzer,
   findPeaks,
   hzToMel,
   logMel,
@@ -56,6 +57,31 @@ describe('fft', () => {
 
   it('maps bins to frequencies', () => {
     expect(binToHz(40, 512, SAMPLE_RATE_HZ)).toBeCloseTo(1250, 6);
+  });
+});
+
+describe('createSpectrogramAnalyzer', () => {
+  it('produces exactly what the one-shot function produces', () => {
+    const samples = pinkNoise({ seconds: 1, seed: 7 }, 0.2);
+    const analyzer = createSpectrogramAnalyzer();
+    const reused = analyzer.analyze(samples);
+    const oneShot = computeSpectrogram(samples);
+    expect(reused.frames).toBe(oneShot.frames);
+    expect(reused.bins).toBe(oneShot.bins);
+    expect(Array.from(reused.data)).toEqual(Array.from(oneShot.data));
+  });
+
+  it('gives the same answer on every call, so state does not leak between windows', () => {
+    const analyzer = createSpectrogramAnalyzer();
+    const a = pinkNoise({ seconds: 1, seed: 1 }, 0.2);
+    const b = tone(1000, { seconds: 1 }, 0.3);
+    const firstA = Array.from(analyzer.analyze(a).data);
+    analyzer.analyze(b);
+    expect(Array.from(analyzer.analyze(a).data)).toEqual(firstA);
+  });
+
+  it('handles a buffer shorter than one window', () => {
+    expect(createSpectrogramAnalyzer().analyze(new Float32Array(10)).frames).toBe(0);
   });
 });
 
@@ -237,6 +263,13 @@ describe('onsets', () => {
     const quiet = applyGainDb(loud, -30);
     const onsetsOf = (s: Float32Array): number[] => detectOnsets(spectralFlux(computeSpectrogram(s)));
     expect(onsetsOf(quiet)).toEqual(onsetsOf(loud));
+  });
+
+  it('gives the same flux with and without a scratch buffer', () => {
+    const spectrogram = computeSpectrogram(pinkNoise({ seconds: 2, seed: 3 }, 0.2));
+    const withScratch = spectralFlux(spectrogram, new Float64Array(spectrogram.bins));
+    const without = spectralFlux(spectrogram);
+    expect(Array.from(withScratch.strength)).toEqual(Array.from(without.strength));
   });
 
   it('is undecided about fewer than three onsets', () => {

@@ -155,6 +155,38 @@ await capture.stop();
 await engine.close();
 ```
 
+### Running the guards inside the worker
+
+Pass `guards` to `createEngine` and the worker evaluates them itself, attaching
+the verdict to every window as `guard` — and **skipping the embedder for windows
+it rejects**:
+
+```ts
+const engine = await createEngine({
+  workerUrl,
+  models,
+  guards: {},                 // same options as createGuards
+  // embedRejectedWindows: true,   // opt back in if you want every embedding
+});
+
+engine.onWindow((window) => {
+  if (window.guard?.accepted !== true) return;   // no embedding was computed
+  …
+});
+```
+
+This is the single biggest performance lever the engine has. The embedder is
+roughly half the per-window cost, and an embedding the app is going to discard
+is worth nothing. Measured with the real models:
+
+| Audio | Without `guards` | With `guards` |
+| --- | --- | --- |
+| Silence | 17.0 ms/window | **7.3 ms/window** |
+| Loud noise, accepted | 17.4 ms/window | 17.2 ms/window |
+
+So it roughly halves the cost of the windows that do not matter, and costs
+nothing on the ones that do.
+
 > **The model path does not run under `vite dev`.** Vite serves workers as ES
 > modules in development whatever `worker.format` says, and MediaPipe cannot
 > load in a module worker. Exercise anything that needs a class score or an
@@ -333,7 +365,12 @@ pnpm typecheck     # tsc --noEmit under the consumers' strictness
 pnpm playground    # a real browser: builds, then previews (models need a build)
 pnpm playground:dsp # dev server, for the DSP-only path
 pnpm smoke         # headless Chromium: loads the worklet and checks it runs
+pnpm bench         # build a benchmark page and serve it to a phone on your LAN
 ```
+
+`pnpm bench` answers the one question CI cannot: what the engine costs on real
+hardware. It needs no HTTPS and no hosting — the page uses no microphone, so a
+plain LAN address is enough. See `docs/benchmarking-on-a-phone.md`.
 
 `pnpm smoke` needs Playwright and a browser
 (`pnpm add -D playwright && npx playwright install chromium`). It covers the one

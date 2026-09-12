@@ -33,8 +33,8 @@ let engine: Engine | null = null;
 
 const api = {
   /** Load the models once for the whole run. */
-  async init(models: EvalModels): Promise<void> {
-    engine = await createEngine({ workerUrl, models });
+  async init(models: EvalModels, guards?: Parameters<typeof createEngine>[0]['guards']): Promise<void> {
+    engine = await createEngine({ workerUrl, models, ...(guards === undefined ? {} : { guards }) });
   },
 
   /** Run one buffer through the engine and return its windows. */

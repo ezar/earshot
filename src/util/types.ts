@@ -66,6 +66,19 @@ export interface WindowFeatures {
   readonly amplitudeModulationDepth: number;
 }
 
+/** Why a window was rejected by the engine's guards. */
+export type WindowGuardReason = 'silence' | 'too-loud' | 'interference' | 'clipping';
+
+/** The engine's guard verdict for a window, when guards are configured. */
+export interface WindowGuard {
+  /** True when the window is usable for learning and scoring. */
+  readonly accepted: boolean;
+  /** Reasons the window was rejected; empty when accepted. */
+  readonly reasons: readonly WindowGuardReason[];
+  /** Strongest interference class found, if any. */
+  readonly interference: ClassScore | null;
+}
+
 /** Everything the engine derives from one analysis window. */
 export interface WindowResult {
   /** Window start time, in seconds since the capture started. */
@@ -78,6 +91,11 @@ export interface WindowResult {
   readonly rmsDbfs: number;
   /** Interpretable features of the window. */
   readonly features: WindowFeatures;
+  /**
+   * Guard verdict, present only when `createEngine` was given `guards`.
+   * When absent, run {@link createGuards} over the window yourself.
+   */
+  readonly guard?: WindowGuard;
 }
 
 /** A voiced/unvoiced decision for one pitch frame. */

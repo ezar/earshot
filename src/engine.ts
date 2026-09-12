@@ -9,6 +9,7 @@
 
 import { SAMPLE_RATE_HZ } from './constants.js';
 import type { FeatureOptions } from './dsp/features.js';
+import type { GuardConfig } from './guards/index.js';
 import type { ModelUrls } from './models/tasks-audio.js';
 import type { WindowResult } from './util/types.js';
 import type { EngineRequest, EngineResponse } from './worker/protocol.js';
@@ -21,6 +22,23 @@ export interface EngineOptions {
   readonly models: Omit<ModelUrls, 'loadTasksAudio'>;
   /** Feature extraction overrides. */
   readonly features?: FeatureOptions;
+  /**
+   * Run the guards inside the worker and attach the verdict to every
+   * {@link WindowResult} as `guard`.
+   *
+   * Doing it here rather than in the host app is not only convenience: the
+   * embedder is roughly half the engine's per-window cost, and with guards
+   * configured it is skipped for rejected windows, whose embeddings the app
+   * would discard anyway. On audio that is mostly silence or interference that
+   * is most of the work avoided.
+   */
+  readonly guards?: GuardConfig;
+  /**
+   * Embed rejected windows anyway. Defaults to false, and only has any effect
+   * when {@link guards} is set. Set it when you want an embedding for every
+   * window regardless of the verdict.
+   */
+  readonly embedRejectedWindows?: boolean;
   /** Sample rate of the audio that will be pushed, in Hz. Defaults to {@link SAMPLE_RATE_HZ}. */
   readonly sampleRateHz?: number;
   /**
@@ -93,8 +111,12 @@ export async function createEngine(options: EngineOptions): Promise<Engine> {
   const ready = await send({
     type: 'init',
     id: nextId++,
-    models: options.models,
+    models: resolveModelUrls(options.models),
     ...(options.features === undefined ? {} : { features: options.features }),
+    ...(options.guards === undefined ? {} : { guards: options.guards }),
+    ...(options.embedRejectedWindows === undefined
+      ? {}
+      : { embedRejectedWindows: options.embedRejectedWindows }),
     sampleRateHz: options.sampleRateHz ?? SAMPLE_RATE_HZ,
   });
   if (ready.type !== 'ready') {
@@ -139,6 +161,33 @@ export async function createEngine(options: EngineOptions): Promise<Engine> {
  * Consumers must therefore build workers as IIFE, not ESM:
  * `worker: { format: 'iife' }` in `vite.config.ts`.
  */
+/**
+ * Resolve model URLs against the document, not the worker.
+ *
+ * The worker resolves a relative URL against its own script — which a bundler
+ * puts in `assets/` — so `./models/wasm` quietly becomes `assets/models/wasm`
+ * and MediaPipe fails to load with a 404 that names a path the app never wrote.
+ * Resolving here, on the main thread, makes a relative URL mean what the author
+ * meant: relative to the page.
+ *
+ * @param models - Model locations as the app supplied them.
+ * @param base - Base to resolve against; defaults to the document's URL.
+ * @returns The same locations, absolute. Already-absolute URLs pass through.
+ */
+export function resolveModelUrls(
+  models: Omit<ModelUrls, 'loadTasksAudio'>,
+  base: string | undefined = typeof location === 'undefined' ? undefined : location.href,
+): Omit<ModelUrls, 'loadTasksAudio'> {
+  if (base === undefined) return models;
+  const absolute = (url: string): string => new URL(url, base).href;
+  return {
+    ...models,
+    wasmBaseUrl: absolute(models.wasmBaseUrl),
+    ...(models.classifierUrl === undefined ? {} : { classifierUrl: absolute(models.classifierUrl) }),
+    ...(models.embedderUrl === undefined ? {} : { embedderUrl: absolute(models.embedderUrl) }),
+  };
+}
+
 function defaultCreateWorker(url: string): Worker {
   return new Worker(url, { name: 'earshot-engine' });
 }

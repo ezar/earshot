@@ -41,22 +41,75 @@ Real `yamnet_classifier.tflite` (4.1 MB) and `yamnet_embedder.tflite` (12.9 MB),
 MediaPipe `@mediapipe/tasks-audio@0.10.21`, headless Chromium in a desktop
 container.
 
+**Methodology.** 30 s of audio (59 windows) per pass, four passes, the first
+discarded as warm-up, median of the rest. An earlier revision of this page
+reported 35.5-43.6 ms and called the budget missed; that was measurement error —
+seven windows with a cold WASM runtime and no warm-up discarded. Those figures
+are withdrawn.
+
 | Metric | Value | Notes |
 | --- | --- | --- |
 | Model load, main thread | 1094 ms | classifier + embedder |
-| Model load, classic worker | 1137-1408 ms | end to end through `createEngine` |
+| Model load, classic worker | 833-1408 ms | end to end through `createEngine` |
 | Model load, module worker | **fails** | see decision `0007` |
 | Embedding dimensions | 1024 | matches `EMBEDDING_DIMENSIONS` |
-| classify + embed, one window | 17.4 ms | models only |
-| Full engine, one window | 35.5-43.6 ms | embed + classify + features, over 3 runs |
+| Full engine, one window | **17.5 ms** | classifier + embedder + features |
+| Full engine, classifier only | 7.7 ms | no embedder configured |
+| Full engine, window the guards reject | **7.3 ms** | embedder skipped; see below |
 
-The full-engine figure is **above the 30 ms target** in every run, on a desktop
-container considerably faster than the 2022 mid-range Android phone the target
-names. The gap between 17.4 ms and the full figure is the feature extractor, not
-the models, which is where any optimisation should start.
+The embedder costs about 9.8 ms per window, over half the total. Model inference
+dominates: the feature extractor is around 2 ms of the 17.5 ms, so even removing
+it entirely would not change the picture much — which is why the guards option
+below, which skips the embedder outright, matters more than any DSP work.
 
-Also measured: `vite dev` cannot run the model path at all, whatever
-`worker.format` says — see decision `0007` for the four combinations tested.
+### Effect of the feature-extractor optimisations
+
+Same methodology, each stage measured against the commit before it:
+
+| Configuration | Original | Buffer reuse + flux logs | + real-input FFT |
+| --- | --- | --- | --- |
+| classifier + embedder | 19.5 ms | 17.3 ms | **17.5 ms** |
+| classifier only | 9.1 ms | 8.7 ms | **7.7 ms** |
+
+The classifier-only column is the honest measure of the DSP work, since it is
+not swamped by the embedder: **9.1 ms to 7.7 ms, -15 %**. With the embedder
+running, the DSP is a small enough share that the change sits inside the
+run-to-run spread.
+
+In a Node microbenchmark of `extract` alone (300 repetitions) the picture is
+much sharper, **3.68 ms to 2.01 ms, -45 %**:
+
+| Stage | `extract` | One 512-point transform |
+| --- | --- | --- |
+| Original | 3.68 ms | 0.018 ms |
+| Reused STFT tables and buffers, flux logarithms carried forward | 3.12 ms | 0.018 ms |
+| Real-input FFT | **2.01 ms** | **0.008 ms** |
+
+Three changes account for it:
+
+1. The STFT reuses its transform tables, analysis window and buffers instead of
+   rebuilding them per window.
+2. Spectral flux carries each magnitude's logarithm forward rather than
+   recomputing it as the next frame's "previous", halving 49 152 logarithms per
+   window to 24 576.
+3. The FFT transforms a real signal with a complex transform of half the length
+   plus a recombination pass, rather than a full-length complex transform with a
+   zeroed imaginary part. Verified against a naive DFT over 42 signal and size
+   combinations; worst relative error 4.4e-8.
+
+### Effect of running the guards inside the worker
+
+`createEngine({ guards })` evaluates the guards in the worker and skips the
+embedder for rejected windows. The embedder is about half the per-window cost,
+and an embedding the host app discards is worth nothing.
+
+| Audio | Without `guards` | With `guards` | Windows embedded |
+| --- | --- | --- | --- |
+| Silence | 17.0 ms | **7.3 ms** | 0 of 60 |
+| Loud noise, accepted | 17.4 ms | 17.2 ms | 60 of 60 |
+
+It roughly halves the cost of windows that do not matter and costs nothing on
+the ones that do.
 
 ## Pipeline sanity against real audio (measured)
 
@@ -120,8 +173,15 @@ mid-range Android phone.
 
 | Device | Per window | Target | Result |
 | --- | --- | --- | --- |
-| Desktop container, headless Chromium | 35.5-43.6 ms | < 30 ms | **over budget** |
-| 2022 mid-range Android | — | < 30 ms | not measured |
+| Desktop container, headless Chromium | 17.5 ms | < 30 ms | within budget |
+| Same, window rejected by the guards | 7.3 ms | < 30 ms | within budget |
+| 2022 mid-range Android | — | < 30 ms | **not measured** |
+
+The target names a phone, and this container is considerably faster than one, so
+being within budget here does not establish that the target is met. A mid-range
+phone two to three times slower would sit at 35-50 ms. Measuring on real
+hardware is the only way to settle it, and the embedder — about half the cost —
+is the first thing to look at if it turns out to be missed.
 
 ## Reproducing
 
