@@ -20,14 +20,17 @@ MIT licensed. Distributed from GitHub release tags, not npm.
 // package.json
 {
   "dependencies": {
-    "earshot": "github:ezar/earshot#v0.4.0"
+    "earshot": "github:ezar/earshot#v0.5.0"
   }
 }
 ```
 
 > **Do not use `v0.3.0`.** `createEngine` cannot load a model in any browser on
 > that tag, so nothing needing a class score or an embedding works. `v0.4.0` is
-> the first usable release; see the migration note in `CHANGELOG.md`.
+> the first usable release, and `v0.5.0` is the one to take: it is the same API,
+> measurably faster, and it stops the capture worklet allocating on the audio
+> thread. See the migration note in `CHANGELOG.md` if you are coming from
+> `v0.3.0`; from `v0.4.0` there is nothing to migrate.
 
 Always depend on a tag, never on a branch. There is no build step: the `exports`
 map points at the TypeScript sources, and there are no install or prepare
@@ -194,6 +197,13 @@ nothing on the ones that do.
 > Capture, levels, features, pitch and segmentation never touch a model and work
 > in dev as normal. See `docs/decisions/0007-*.md`.
 
+The worklet allocates nothing on the audio thread. A chunk has to be transferred
+to reach the main thread and a transferred buffer cannot be refilled, so the
+processor keeps a pool and `createCapture` hands each buffer straight back.
+`capture.starvedBuffers` counts any the processor had to allocate because the
+main thread was too slow to return them — it should stay at zero, and each one
+is a garbage collection on the audio thread, which is a gap in the recording.
+
 `createCapture` asks the browser for echo cancellation, noise suppression and
 automatic gain control to be **off** — all three rewrite the signal in ways that
 destroy the stationarity a machine profile depends on, and AGC makes dBFS levels
@@ -275,7 +285,7 @@ window would ever flag.
 > // package.json
 > {
 >   "dependencies": {
->     "earshot": "github:ezar/earshot#v0.4.0",
+>     "earshot": "github:ezar/earshot#v0.5.0",
 >     "@mediapipe/tasks-audio": "<=0.10.21"
 >   }
 > }
@@ -355,6 +365,26 @@ plain numbers, strings, arrays and objects — never a typed array, `Map` or cla
 instance. Persist them with Dexie and hand them back later.
 
 `Profile` and `KnnSnapshot` carry a `schemaVersion`; check it when you load.
+
+### Storing many profiles
+
+A profile learned in the `'embedding'` space carries a 1024-dimension mean and
+variance per state, and as JSON text that runs to roughly 135 kB for three
+states — almost all of it digits. `compactProfile` quantizes those to float16
+and `expandProfile` restores them:
+
+```ts
+import { compactProfile, expandProfile } from 'earshot';
+
+await db.profiles.put(compactProfile(profile));
+const restored = expandProfile(await db.profiles.get(id));
+```
+
+A round trip moves a check score by well under a thousandth. Only the embedding
+space is quantized: `'features'`-space profiles pass through untouched, because
+their dimensions run from negative decibels to thousands of hertz — where
+float16's three significant digits are a visible error — and there are only
+about seventy of them per state, so there is nothing to save.
 
 ## Developing
 

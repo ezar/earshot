@@ -25,6 +25,8 @@ const workletSource = readFileSync(join(root, 'src', 'capture', 'capture-worklet
 const dataUrl = `data:text/javascript;base64,${Buffer.from(workletSource).toString('base64')}`;
 const PORT = 8099;
 const CHUNK_SAMPLES = 512;
+/** Chunks to drive through the pool; far more than the pool holds. */
+const CHUNKS = 12;
 
 let chromium;
 try {
@@ -55,7 +57,7 @@ page.on('pageerror', (error) => console.error(`  page error: ${error.message}`))
 await page.goto(`http://localhost:${PORT}/`);
 
 const results = await page.evaluate(
-  async ([inlineUrl, chunkSamples]) => {
+  async ([inlineUrl, chunkSamples, CHUNKS]) => {
     const out = {};
     for (const [name, url] of [['served asset', '/capture-worklet.js'], ['inlined data URL', inlineUrl]]) {
       const context = new AudioContext({ sampleRate: 48000 });
@@ -66,22 +68,28 @@ const results = await page.evaluate(
           numberOfOutputs: 0,
           channelCount: 1,
           channelCountMode: 'explicit',
-          processorOptions: { chunkSamples },
+          processorOptions: { chunkSamples, poolSize: 4 },
         });
         const chunks = await new Promise((resolve) => {
           const sizes = [];
           let ready = false;
+          let poolSize = 0;
+          let starved = 0;
           node.port.onmessage = (event) => {
-            if (event.data.type === 'ready') ready = true;
+            if (event.data.type === 'ready') { ready = true; poolSize = event.data.poolSize; }
             if (event.data.type !== 'chunk') return;
-            sizes.push({ length: event.data.samples.length, total: event.data.totalSamples });
-            if (sizes.length >= 3) resolve({ ready, sizes });
+            const samples = event.data.samples;
+            sizes.push({ length: samples.length, total: event.data.totalSamples });
+            starved = event.data.starved;
+            // Return the buffer to the pool, exactly as createCapture does.
+            node.port.postMessage({ type: 'release', samples }, [samples.buffer]);
+            if (sizes.length >= CHUNKS) resolve({ ready, sizes, poolSize, starved });
           };
           const oscillator = context.createOscillator();
           oscillator.frequency.value = 440;
           oscillator.connect(node);
           oscillator.start();
-          setTimeout(() => resolve({ ready, sizes }), 3000);
+          setTimeout(() => resolve({ ready, sizes, poolSize, starved }), 8000);
         });
         out[name] = { ok: true, ...chunks };
       } catch (error) {
@@ -91,7 +99,7 @@ const results = await page.evaluate(
     }
     return out;
   },
-  [dataUrl, CHUNK_SAMPLES],
+  [dataUrl, CHUNK_SAMPLES, CHUNKS],
 );
 
 await browser.close();
@@ -108,12 +116,23 @@ for (const [name, result] of Object.entries(results)) {
   const monotonic = result.sizes.every(
     (chunk, i) => chunk.total === CHUNK_SAMPLES * (i + 1),
   );
-  if (!result.ready || result.sizes.length < 3 || wrongSize.length > 0 || !monotonic) {
+  if (!result.ready || result.sizes.length < CHUNKS || wrongSize.length > 0 || !monotonic) {
     console.error(`FAIL ${name}: ${JSON.stringify(result)}`);
     failed = true;
     continue;
   }
-  console.log(`ok   ${name}: ${result.sizes.length} chunks of ${CHUNK_SAMPLES} samples, counter monotonic`);
+  // The spec requires no allocation inside `process`. The pool makes that true
+  // only while the main thread returns buffers; `starved` counts every time it
+  // did not, so a non-zero value here is the requirement being violated.
+  if (result.starved !== 0) {
+    console.error(`FAIL ${name}: the worklet allocated ${result.starved} buffers on the audio thread`);
+    failed = true;
+    continue;
+  }
+  console.log(
+    `ok   ${name}: ${result.sizes.length} chunks of ${CHUNK_SAMPLES} samples, ` +
+      `counter monotonic, pool of ${result.poolSize} reused with 0 allocations`,
+  );
 }
 
 process.exit(failed ? 1 : 0);

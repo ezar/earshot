@@ -5,10 +5,20 @@ All notable changes to earshot are recorded here. The format follows
 semantic versioning with the 0.x convention that **breaking changes bump MINOR**
 and come with a migration note.
 
-## [Unreleased]
+## [0.5.0] — 2026-09-12
+
+The engine is measurably faster and no longer allocates on the audio thread.
+No API was removed and nothing moved, so upgrading from 0.4.0 is a version
+change and nothing else.
 
 ### Added
 
+- `compactProfile` and `expandProfile`. An embedding-space profile is roughly
+  135 kB as JSON for three states, almost all of it digits; compacting
+  quantizes the per-state mean and variance to float16 and more than halves it,
+  moving a check score by well under a thousandth. Features-space profiles pass
+  through untouched — quantizing them would cost accuracy and save nothing.
+- `capture.starvedBuffers`, and `poolSize` on `createCapture`.
 - **A device benchmark.** `pnpm bench` builds a page and serves it on the local
   network; open it on a phone and it measures the engine's per-window cost with
   the real models, against the 30 ms target. It uses no microphone — the audio
@@ -45,6 +55,13 @@ and come with a migration note.
 
 ### Fixed
 
+- **The capture worklet allocated on the audio thread.** The spec requires no
+  allocation inside `process`, and it did one per chunk — about twenty a second
+  — because a transferred buffer is detached and cannot be refilled. The
+  processor now keeps a pool and the main thread transfers each buffer back
+  once it has copied what it needs. Verified in Chromium: twelve chunks through
+  a pool of four with zero allocations, and the smoke test now fails if the
+  count is not zero.
 - **Relative model URLs resolved against the worker chunk rather than the page.**
   `wasmBaseUrl: './models/wasm'` quietly became `assets/models/wasm`, because the
   worker resolves a relative URL against its own script, and MediaPipe failed
@@ -52,8 +69,6 @@ and come with a migration note.
   model URLs on the main thread before sending them. Absolute URLs are
   unaffected. Found while building the device benchmark, which uses relative
   paths so its output folder can be served from anywhere.
-
-### Fixed
 
 - **The per-window figures published in 0.4.0 were wrong.** `docs/eval-results.md`
   and the 0.4.0 changelog entry reported 35.5-43.6 ms and called the 30 ms budget
@@ -133,6 +148,12 @@ score or an embedding fails. There is no workaround within 0.3.0.
   are blocked and why.
 
 ### Notes
+
+**`earshot/mlp` now runs against the real TensorFlow.js**, not an injected
+stand-in — training, prediction, the epoch callback and both error paths. It
+works unchanged; unlike the engine, nothing was hiding. `earshot/clap` is still
+unexercised: `huggingface.co` was unreachable from the environment this was done
+in, so the model could not be downloaded.
 
 **The evaluation harness ran against real models for the first time**, and that
 is what found both defects above. Unit tests could not have: they use injected
@@ -264,5 +285,6 @@ recorded in full in `docs/decisions/`:
   injected module stand-ins; neither has been run against the real
   `@huggingface/transformers` or `@tensorflow/tfjs`.
 
+[0.5.0]: https://github.com/ezar/earshot/releases/tag/v0.5.0
 [0.4.0]: https://github.com/ezar/earshot/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ezar/earshot/releases/tag/v0.3.0
