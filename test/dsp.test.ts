@@ -20,7 +20,7 @@ import {
 } from '../src/dsp/spectrum.js';
 import { detectOnsets, onsetPeriodicity, spectralFlux } from '../src/dsp/onsets.js';
 import { modulationRate } from '../src/dsp/modulation.js';
-import { extractFeatures, featureVector } from '../src/dsp/features.js';
+import { extractFeatures, featureVector, featureVectorNames } from '../src/dsp/features.js';
 import {
   amplitudeModulate,
   applyGainDb,
@@ -302,6 +302,16 @@ describe('features', () => {
     expect(features.rmsDbfs).toBeLessThan(0);
     expect(features.rmsDbfs).toBeGreaterThan(-60);
     expect(Number.isFinite(features.spectralCentroidHz)).toBe(true);
+  });
+
+  it('names every dimension of the vector, for descriptors and debugging', () => {
+    const features = extractFeatures(pinkNoise({ seconds: 1 }, 0.2));
+    const names = featureVectorNames(features);
+    expect(names.length).toBe(featureVector(features).length);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names[0]).toMatch(/mel shape/);
+    expect(names).toContain('level');
+    expect(names).toContain('AM depth');
   });
 
   it('flattens to a vector of stable length', () => {

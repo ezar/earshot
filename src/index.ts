@@ -135,6 +135,8 @@ export {
   DESCRIBABLE_FEATURES,
   PROFILE_SCHEMA_VERSION,
 } from './learn/profile.js';
+export { compactProfile, expandProfile, COMPACT_PROFILE_SCHEMA_VERSION } from './learn/compact.js';
+export type { CompactProfile, CompactProfileState, CompactVector } from './learn/compact.js';
 export type {
   CalibrationRecord,
   FeatureSpace,

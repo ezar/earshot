@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { PITCH_MAX_HZ, PITCH_MIN_HZ, SAMPLE_RATE_HZ } from '../src/constants.js';
-import { trackPitch, yin } from '../src/dsp/pitch.js';
+import { summarize, trackPitch, yin } from '../src/dsp/pitch.js';
 import { applyGainDb, harmonicCall, silence, tone, whiteNoise } from '../fixtures/synthetic/index.js';
 
 describe('yin', () => {
@@ -82,5 +82,29 @@ describe('trackPitch', () => {
 
   it('reports the working sample rate constant', () => {
     expect(SAMPLE_RATE_HZ).toBe(16000);
+  });
+});
+
+describe('summarize', () => {
+  it('derives the contour summaries from frames a caller built itself', () => {
+    // Exported so an app that frames audio its own way can still get the
+    // summaries without re-running the tracker.
+    const frames = [
+      { t: 0.0, f0Hz: 200, confidence: 0.9, rmsDbfs: -20 },
+      { t: 0.1, f0Hz: 0, confidence: 0, rmsDbfs: -70 },
+      { t: 0.2, f0Hz: 400, confidence: 0.9, rmsDbfs: -20 },
+    ];
+    const track = summarize(frames);
+    expect(track.medianF0Hz).toBe(300);
+    expect(track.minF0Hz).toBe(200);
+    expect(track.maxF0Hz).toBe(400);
+    expect(track.voicedFraction).toBeCloseTo(2 / 3, 6);
+    // 200 Hz to 400 Hz is an octave, 12 semitones, over 0.2 s.
+    expect(track.contourSlopeSemitonesPerSecond).toBeCloseTo(60, 0);
+  });
+
+  it('reports nothing voiced for an empty or silent track', () => {
+    expect(summarize([]).medianF0Hz).toBe(0);
+    expect(summarize([{ t: 0, f0Hz: 0, confidence: 0, rmsDbfs: -90 }]).voicedFraction).toBe(0);
   });
 });

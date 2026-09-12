@@ -15,9 +15,13 @@
  * imports inside a worklet module are not reliably supported. Its types and the
  * processor name live in `worklet-protocol.ts`, which the main thread uses.
  *
- * `process` runs on the audio thread every 128 samples and allocates nothing
- * beyond the one chunk it transfers away: the ring buffer is sized once in the
- * constructor and reused for the lifetime of the node.
+ * `process` runs on the audio thread every 128 samples and **allocates
+ * nothing**. A chunk has to be transferred to reach the main thread, and a
+ * transferred buffer is detached and cannot be refilled, so the processor keeps
+ * a pool of buffers and the main thread transfers each one back once it is
+ * done with it. Allocating here instead would put a garbage collection on the
+ * audio thread roughly twenty times a second, and a GC pause there is a gap in
+ * the recording.
  */
 
 /* global AudioWorkletProcessor, registerProcessor, sampleRate */
@@ -25,17 +29,49 @@
 /** Must match `CAPTURE_PROCESSOR_NAME` in `worklet-protocol.ts`. */
 const CAPTURE_PROCESSOR_NAME = 'earshot-capture';
 
+/**
+ * Buffers in the pool.
+ *
+ * One is being filled, one is usually in flight, and the rest absorb a slow
+ * main thread. Four covers roughly 170 ms of round-trip latency at the default
+ * chunk size, far more than a healthy page needs.
+ */
+const DEFAULT_POOL_SIZE = 4;
+
 class EarshotCaptureProcessor extends AudioWorkletProcessor {
   /**
-   * @param {{ processorOptions?: { chunkSamples?: number } }} [options]
+   * @param {{ processorOptions?: { chunkSamples?: number, poolSize?: number } }} [options]
    */
   constructor(options) {
     super();
     const chunkSamples = options?.processorOptions?.chunkSamples ?? 2048;
-    this.chunk = new Float32Array(chunkSamples);
+    const poolSize = Math.max(2, options?.processorOptions?.poolSize ?? DEFAULT_POOL_SIZE);
+
+    /** Buffers not currently in flight. `process` fills the last one. */
+    this.free = [];
+    for (let i = 0; i < poolSize; i += 1) this.free.push(new Float32Array(chunkSamples));
+    this.chunkSamples = chunkSamples;
+    /** The buffer being filled; null when the pool is momentarily empty. */
+    this.chunk = this.free.pop();
     this.fill = 0;
     this.total = 0;
-    this.port.postMessage({ type: 'ready', sampleRate });
+    /**
+     * Buffers allocated beyond the pool because every one was still in flight.
+     * Zero on a healthy page; a rising count means the main thread is not
+     * returning them, and is reported so that it is observable rather than
+     * silently costing a GC.
+     */
+    this.starved = 0;
+
+    this.port.onmessage = (event) => {
+      const message = event.data;
+      // The main thread returns a buffer once it has copied what it needs.
+      if (message?.type === 'release' && message.samples instanceof Float32Array) {
+        if (message.samples.length === this.chunkSamples) this.free.push(message.samples);
+      }
+    };
+
+    this.port.postMessage({ type: 'ready', sampleRate, poolSize });
   }
 
   /**
@@ -45,17 +81,28 @@ class EarshotCaptureProcessor extends AudioWorkletProcessor {
   process(inputs) {
     const channel = inputs[0]?.[0];
     if (channel === undefined) return true;
-    const chunk = this.chunk;
-    const capacity = chunk.length;
+
     for (let i = 0; i < channel.length; i += 1) {
-      chunk[this.fill] = channel[i];
+      if (this.chunk === null) {
+        // Every buffer is in flight. Dropping audio would be worse than the one
+        // allocation, so take the allocation and make it visible.
+        this.chunk = this.free.pop() ?? null;
+        if (this.chunk === null) {
+          this.chunk = new Float32Array(this.chunkSamples);
+          this.starved += 1;
+        }
+        this.fill = 0;
+      }
+      this.chunk[this.fill] = channel[i];
       this.fill += 1;
-      if (this.fill === capacity) {
-        // The copy is transferred, so the caller may retain it and the ring
-        // buffer stays available for the next block without reallocating.
-        const copy = chunk.slice();
-        this.total += capacity;
-        this.port.postMessage({ type: 'chunk', samples: copy, totalSamples: this.total }, [copy.buffer]);
+      if (this.fill === this.chunk.length) {
+        const full = this.chunk;
+        this.total += full.length;
+        this.port.postMessage(
+          { type: 'chunk', samples: full, totalSamples: this.total, starved: this.starved },
+          [full.buffer],
+        );
+        this.chunk = this.free.pop() ?? null;
         this.fill = 0;
       }
     }

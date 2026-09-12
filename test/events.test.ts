@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { SAMPLE_RATE_HZ } from '../src/constants.js';
 import { countSyllables, segmentBuffer } from '../src/events/segment.js';
-import { createEventDetector } from '../src/events/detector.js';
+import { createEventDetector, eventHumanScore } from '../src/events/detector.js';
 import { amplitudeEnvelope } from '../src/dsp/level.js';
 import {
   concat,
@@ -187,5 +187,18 @@ describe('createEventDetector', () => {
 
   it('is not fooled into an event by broadband noise alone', () => {
     expect(detect(whiteNoise({ seconds: 3, seed: 9 }, 0.1), cat).length).toBe(0);
+  });
+
+  it('scores how human a detected event looks', () => {
+    const audio = concat([gap(0.5), harmonicCall({ seconds: 0.5, startHz: 600 }), gap(0.5)]);
+    const human = detect(audio, [
+      { label: 'Cat', score: 0.5 },
+      { label: 'Speech', score: 0.62 },
+    ])[0];
+    expect(human).toBeDefined();
+    expect(eventHumanScore(human as NonNullable<typeof human>)).toBeCloseTo(0.62, 5);
+
+    const plain = detect(audio, cat)[0];
+    expect(eventHumanScore(plain as NonNullable<typeof plain>)).toBe(0);
   });
 });

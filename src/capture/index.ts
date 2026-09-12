@@ -11,7 +11,12 @@
 
 import { SAMPLE_RATE_HZ } from '../constants.js';
 import { resample } from '../dsp/resample.js';
-import { CAPTURE_PROCESSOR_NAME, type CaptureChunkMessage, type CaptureMessage } from './worklet-protocol.js';
+import {
+  CAPTURE_PROCESSOR_NAME,
+  type CaptureChunkMessage,
+  type CaptureMessage,
+  type CaptureReleaseMessage,
+} from './worklet-protocol.js';
 
 /** What the browser actually granted, compared with what earshot asked for. */
 export interface AppliedConstraints {
@@ -40,6 +45,11 @@ export interface CaptureOptions {
   readonly deviceId?: string;
   /** Samples per chunk posted from the worklet. Defaults to 2048. */
   readonly chunkSamples?: number;
+  /**
+   * Buffers the worklet keeps in its pool, so that `process` never allocates on
+   * the audio thread. Defaults to 4, minimum 2.
+   */
+  readonly poolSize?: number;
   /** Resample chunks to this rate before delivering them, in Hz. Defaults to {@link SAMPLE_RATE_HZ}. */
   readonly targetSampleRateHz?: number;
   /** Existing AudioContext to reuse; one is created when omitted. */
@@ -60,6 +70,12 @@ export interface Capture {
   onChunk(listener: (samples: Float32Array) => void): () => void;
   /** Async iterator over the same chunks, for `for await` consumers. */
   chunks(): AsyncIterableIterator<Float32Array>;
+  /**
+   * Buffers the worklet has had to allocate because the main thread did not
+   * return them in time. Zero on a healthy page; each one is a garbage
+   * collection on the audio thread, so a rising value is worth surfacing.
+   */
+  readonly starvedBuffers: number;
   /** Stop capture, release the microphone and close the context earshot created. */
   stop(): Promise<void>;
 }
@@ -104,19 +120,36 @@ export async function createCapture(options: CaptureOptions): Promise<Capture> {
     numberOfOutputs: 0,
     channelCount: 1,
     channelCountMode: 'explicit',
-    processorOptions: { chunkSamples: options.chunkSamples ?? 2048 },
+    processorOptions: {
+      chunkSamples: options.chunkSamples ?? 2048,
+      ...(options.poolSize === undefined ? {} : { poolSize: options.poolSize }),
+    },
   });
   source.connect(node);
 
   const appliedConstraints = readAppliedConstraints(stream, context.sampleRate);
   const listeners = new Set<(samples: Float32Array) => void>();
+  let starvedBuffers = 0;
 
   node.port.onmessage = (event: MessageEvent) => {
     const message = event.data as CaptureMessage;
     if (message.type !== 'chunk') return;
     const chunk = (message as CaptureChunkMessage).samples;
+    starvedBuffers = (message as CaptureChunkMessage).starved;
+
+    // The chunk belongs to the worklet's pool. Resampling already produces a
+    // fresh buffer; when the rates match, copy explicitly. Either way the
+    // listener owns what it receives and may keep it.
     const samples =
-      context.sampleRate === targetSampleRateHz ? chunk : resample(chunk, context.sampleRate, targetSampleRateHz);
+      context.sampleRate === targetSampleRateHz
+        ? chunk.slice()
+        : resample(chunk, context.sampleRate, targetSampleRateHz);
+
+    // Hand the pool's buffer straight back, before the listeners run: a slow
+    // listener must not be able to starve the audio thread.
+    const release: CaptureReleaseMessage = { type: 'release', samples: chunk };
+    node.port.postMessage(release, [chunk.buffer]);
+
     for (const listener of listeners) listener(samples);
   };
 
@@ -124,6 +157,9 @@ export async function createCapture(options: CaptureOptions): Promise<Capture> {
   const capture: Capture = {
     appliedConstraints,
     sampleRateHz: targetSampleRateHz,
+    get starvedBuffers(): number {
+      return starvedBuffers;
+    },
     onChunk(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
