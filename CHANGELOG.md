@@ -7,21 +7,35 @@ and come with a migration note.
 
 ## [Unreleased]
 
-### Changed
-
-- The feature extractor reuses its STFT tables, analysis window and buffers
-  instead of rebuilding them for every window, and spectral flux carries each
-  magnitude's logarithm forward rather than recomputing it as the next frame's
-  "previous" — 49 152 logarithms per window become 24 576. `extract` alone goes
-  from 3.68 ms to 2.94 ms in a Node microbenchmark (-20 %); the full engine in a
-  browser goes from 19.5 ms to 17.3 ms per window (-11 %).
-
 ### Added
 
+- **`createEngine({ guards })` runs the guards inside the worker** and attaches
+  the verdict to every window as `guard` — and skips the embedder for windows it
+  rejects. The embedder is over half the per-window cost, and an embedding the
+  host app discards is worth nothing: on silence the cost falls from 17.0 ms to
+  **7.3 ms** per window, and on audio the guards accept there is no penalty
+  (17.4 ms to 17.2 ms). `embedRejectedWindows: true` opts back in.
+- `WindowResult.guard`, present only when the engine was given `guards`.
+  `WindowGuard` and `WindowGuardReason` are exported.
 - `createSpectrogramAnalyzer`, the reusable form of `computeSpectrogram`. The
   one-shot function is unchanged and still allocates per call; the analyzer
   lends its buffer and is only valid until the next call.
 - `spectralFlux` takes an optional scratch buffer.
+
+### Changed
+
+- **The feature extractor is 45 % faster.** `extract` goes from 3.68 ms to
+  2.01 ms in a Node microbenchmark over 300 repetitions, and the engine's
+  classifier-only path from 9.1 ms to 7.7 ms per window in a browser. Three
+  changes: the STFT reuses its transform tables, analysis window and buffers
+  instead of rebuilding them per window; spectral flux carries each magnitude's
+  logarithm forward rather than recomputing it as the next frame's "previous",
+  halving 49 152 logarithms per window to 24 576; and the FFT transforms a real
+  signal with a complex transform of half the length plus a recombination pass,
+  rather than a full-length complex transform with a zeroed imaginary part.
+  A 512-point transform goes from 0.018 ms to 0.008 ms.
+- `Fft` now requires a size of at least 4, since the real-input path needs a
+  half-length complex transform. Sizes below that were never usable for audio.
 
 ### Fixed
 

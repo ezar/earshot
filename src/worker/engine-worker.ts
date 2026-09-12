@@ -17,6 +17,7 @@
 import { SAMPLE_RATE_HZ } from '../constants.js';
 import { createFeatureExtractor, type FeatureExtractor } from '../dsp/features.js';
 import { createFramer, type Framer } from '../dsp/framing.js';
+import { createGuards, type Guards } from '../guards/index.js';
 import { createClassifier, type Classifier } from '../models/classifier.js';
 import { createEmbedder, type Embedder } from '../models/embedder.js';
 import type { WindowResult } from '../util/types.js';
@@ -27,6 +28,8 @@ interface EngineState {
   extractor: FeatureExtractor;
   classifier: Classifier | null;
   embedder: Embedder | null;
+  guards: Guards | null;
+  embedRejectedWindows: boolean;
 }
 
 let state: EngineState | null = null;
@@ -54,6 +57,8 @@ async function handle(request: EngineRequest): Promise<void> {
           extractor: createFeatureExtractor({ ...request.features, sampleRateHz }),
           classifier,
           embedder,
+          guards: request.guards === undefined ? null : createGuards(request.guards),
+          embedRejectedWindows: request.embedRejectedWindows ?? false,
         };
         post({
           type: 'ready',
@@ -97,11 +102,29 @@ async function handle(request: EngineRequest): Promise<void> {
   }
 }
 
+/**
+ * Derive everything the engine reports for one window.
+ *
+ * The order matters for cost. Features and classification come first, because
+ * guards need a level and a set of class scores to judge a window. The embedder
+ * runs last and, when guards are configured, only on windows they accept: it is
+ * roughly half the engine's per-window cost, and an embedding the host app is
+ * going to discard is worth nothing.
+ */
 function analyse(current: EngineState, t: number, samples: Float32Array): WindowResult {
   const features = current.extractor.extract(samples);
-  const embedding = current.embedder === null ? [] : Array.from(current.embedder.embed(samples));
   const classes = current.classifier === null ? [] : current.classifier.classify(samples);
-  return { t, embedding, classes, rmsDbfs: features.rmsDbfs, features };
+  const base = { t, classes, rmsDbfs: features.rmsDbfs, features };
+
+  if (current.guards === null) {
+    const embedding = current.embedder === null ? [] : Array.from(current.embedder.embed(samples));
+    return { ...base, embedding };
+  }
+
+  const guard = current.guards.check({ ...base, embedding: [] });
+  const shouldEmbed = current.embedder !== null && (guard.accepted || current.embedRejectedWindows);
+  const embedding = shouldEmbed ? Array.from((current.embedder as Embedder).embed(samples)) : [];
+  return { ...base, embedding, guard };
 }
 
 function requireState(): EngineState {

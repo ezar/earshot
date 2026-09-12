@@ -9,6 +9,7 @@
 
 import { SAMPLE_RATE_HZ } from './constants.js';
 import type { FeatureOptions } from './dsp/features.js';
+import type { GuardConfig } from './guards/index.js';
 import type { ModelUrls } from './models/tasks-audio.js';
 import type { WindowResult } from './util/types.js';
 import type { EngineRequest, EngineResponse } from './worker/protocol.js';
@@ -21,6 +22,23 @@ export interface EngineOptions {
   readonly models: Omit<ModelUrls, 'loadTasksAudio'>;
   /** Feature extraction overrides. */
   readonly features?: FeatureOptions;
+  /**
+   * Run the guards inside the worker and attach the verdict to every
+   * {@link WindowResult} as `guard`.
+   *
+   * Doing it here rather than in the host app is not only convenience: the
+   * embedder is roughly half the engine's per-window cost, and with guards
+   * configured it is skipped for rejected windows, whose embeddings the app
+   * would discard anyway. On audio that is mostly silence or interference that
+   * is most of the work avoided.
+   */
+  readonly guards?: GuardConfig;
+  /**
+   * Embed rejected windows anyway. Defaults to false, and only has any effect
+   * when {@link guards} is set. Set it when you want an embedding for every
+   * window regardless of the verdict.
+   */
+  readonly embedRejectedWindows?: boolean;
   /** Sample rate of the audio that will be pushed, in Hz. Defaults to {@link SAMPLE_RATE_HZ}. */
   readonly sampleRateHz?: number;
   /**
@@ -95,6 +113,10 @@ export async function createEngine(options: EngineOptions): Promise<Engine> {
     id: nextId++,
     models: options.models,
     ...(options.features === undefined ? {} : { features: options.features }),
+    ...(options.guards === undefined ? {} : { guards: options.guards }),
+    ...(options.embedRejectedWindows === undefined
+      ? {}
+      : { embedRejectedWindows: options.embedRejectedWindows }),
     sampleRateHz: options.sampleRateHz ?? SAMPLE_RATE_HZ,
   });
   if (ready.type !== 'ready') {

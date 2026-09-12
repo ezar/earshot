@@ -37,6 +37,8 @@ export {
 export type {
   BandEnergy,
   ClassScore,
+  WindowGuard,
+  WindowGuardReason,
   PitchFrame,
   PitchTrack,
   QuantizedEmbedding,
