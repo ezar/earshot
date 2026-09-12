@@ -5,7 +5,11 @@ All notable changes to earshot are recorded here. The format follows
 semantic versioning with the 0.x convention that **breaking changes bump MINOR**
 and come with a migration note.
 
-## [Unreleased]
+## [0.5.0] — 2026-09-12
+
+The engine is measurably faster and no longer allocates on the audio thread.
+No API was removed and nothing moved, so upgrading from 0.4.0 is a version
+change and nothing else.
 
 ### Added
 
@@ -65,8 +69,6 @@ and come with a migration note.
   model URLs on the main thread before sending them. Absolute URLs are
   unaffected. Found while building the device benchmark, which uses relative
   paths so its output folder can be served from anywhere.
-
-### Fixed
 
 - **The per-window figures published in 0.4.0 were wrong.** `docs/eval-results.md`
   and the 0.4.0 changelog entry reported 35.5-43.6 ms and called the 30 ms budget
@@ -283,5 +285,6 @@ recorded in full in `docs/decisions/`:
   injected module stand-ins; neither has been run against the real
   `@huggingface/transformers` or `@tensorflow/tfjs`.
 
+[0.5.0]: https://github.com/ezar/earshot/releases/tag/v0.5.0
 [0.4.0]: https://github.com/ezar/earshot/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ezar/earshot/releases/tag/v0.3.0

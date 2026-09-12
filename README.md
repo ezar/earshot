@@ -20,14 +20,17 @@ MIT licensed. Distributed from GitHub release tags, not npm.
 // package.json
 {
   "dependencies": {
-    "earshot": "github:ezar/earshot#v0.4.0"
+    "earshot": "github:ezar/earshot#v0.5.0"
   }
 }
 ```
 
 > **Do not use `v0.3.0`.** `createEngine` cannot load a model in any browser on
 > that tag, so nothing needing a class score or an embedding works. `v0.4.0` is
-> the first usable release; see the migration note in `CHANGELOG.md`.
+> the first usable release, and `v0.5.0` is the one to take: it is the same API,
+> measurably faster, and it stops the capture worklet allocating on the audio
+> thread. See the migration note in `CHANGELOG.md` if you are coming from
+> `v0.3.0`; from `v0.4.0` there is nothing to migrate.
 
 Always depend on a tag, never on a branch. There is no build step: the `exports`
 map points at the TypeScript sources, and there are no install or prepare
@@ -282,7 +285,7 @@ window would ever flag.
 > // package.json
 > {
 >   "dependencies": {
->     "earshot": "github:ezar/earshot#v0.4.0",
+>     "earshot": "github:ezar/earshot#v0.5.0",
 >     "@mediapipe/tasks-audio": "<=0.10.21"
 >   }
 > }
